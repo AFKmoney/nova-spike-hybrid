@@ -20,13 +20,16 @@ from __future__ import annotations
 import re
 import time
 import json
+import os
 import numpy as np
+import scipy.sparse as sp
 from dataclasses import dataclass, field
 from typing import Optional
 
 from .core import LIFNeuron, LIFParams, SimulationClock
 from .network import SpikingNetwork, PopulationType, SynapseGroup
 from .stdp import STDPTracker, STDPConfig, imprint_path
+from .rstdp import RSTDPTracker, RSTDPConfig
 from .coder import SpikeCoder, PopulationDecoder, tokenize
 from .agent import SpikeAgent
 
@@ -47,16 +50,21 @@ _QUERY_PATTERNS = [
 @dataclass
 class SpikeConfig:
     """Configuration de SPIKE."""
-    n_sensory: int = 400
+    n_sensory: int = 600             # augmenté pour gérer + de tokens
     n_associative: int = 1500
-    n_motor: int = 300
+    n_motor: int = 600               # augmenté pour gérer + de tokens
     neurons_per_token: int = 6
     sim_ticks: int = 50              # ticks par cycle cognitif
     input_gain: float = 2.5          # gain du courant sensoriel
     poisson_rate: float = 0.6        # proba de spike par neurone sensoriel actif
     stdp_enabled: bool = True
+    rstdp_enabled: bool = False      # R-STDP pour apprentissage par renforcement
     learn_weight: float = 3.0        # poids imprint pour apprentissage
     motor_trigger_threshold: int = 4 # nb min de spikes pour déclencher un outil
+    direct_sens_motor: bool = True   # synapse direct sens→motor (one-shot plus fort)
+    direct_sens_motor_weight: float = 2.0  # poids de la synapse directe
+    dream_enabled: bool = True       # mode rêve activable
+    dream_default_replays: int = 5   # nb de replays par défaut
     debug: bool = False
 
 
@@ -97,11 +105,36 @@ class SpikeBrain:
             cooldown=3,
         )
 
-        # Trackers STDP
+        # Synapse direct sens→motor (one-shot plus fort)
+        # Bypass la couche associative pour les faits explicites
+        if self.cfg.direct_sens_motor:
+            self.syn_sens_to_motor = SynapseGroup(
+                "sens→motor (direct)", PopulationType.SENSORY, PopulationType.MOTOR,
+                self.cfg.n_sensory, self.cfg.n_motor, plastic=True,
+            )
+            # Init à zéro — on imprint pendant learn()
+        else:
+            self.syn_sens_to_motor = None
+
+        # Trackers STDP (classique ou R-STDP)
         stdp_cfg = STDPConfig()
-        self.stdp_sens_assoc = STDPTracker(self.net.syn_sens_to_assoc, stdp_cfg)
-        self.stdp_assoc_assoc = STDPTracker(self.net.syn_assoc_to_assoc, stdp_cfg)
-        self.stdp_assoc_motor = STDPTracker(self.net.syn_assoc_to_motor, stdp_cfg)
+        if self.cfg.rstdp_enabled:
+            rstdp_cfg = RSTDPConfig()
+            self.stdp_sens_assoc = RSTDPTracker(self.net.syn_sens_to_assoc, rstdp_cfg)
+            self.stdp_assoc_assoc = RSTDPTracker(self.net.syn_assoc_to_assoc, rstdp_cfg)
+            self.stdp_assoc_motor = RSTDPTracker(self.net.syn_assoc_to_motor, rstdp_cfg)
+            if self.syn_sens_to_motor is not None:
+                self.stdp_sens_motor = RSTDPTracker(self.syn_sens_to_motor, rstdp_cfg)
+            else:
+                self.stdp_sens_motor = None
+        else:
+            self.stdp_sens_assoc = STDPTracker(self.net.syn_sens_to_assoc, stdp_cfg)
+            self.stdp_assoc_assoc = STDPTracker(self.net.syn_assoc_to_assoc, stdp_cfg)
+            self.stdp_assoc_motor = STDPTracker(self.net.syn_assoc_to_motor, stdp_cfg)
+            if self.syn_sens_to_motor is not None:
+                self.stdp_sens_motor = STDPTracker(self.syn_sens_to_motor, stdp_cfg)
+            else:
+                self.stdp_sens_motor = None
 
         # Mémoire associative explicite (pour l'apprentissage one-shot)
         # Format: list de (fact, value, sensory_indices, motor_indices)
@@ -111,6 +144,8 @@ class SpikeBrain:
         self.n_learns = 0
         self.n_calls = 0
         self.n_tool_calls = 0
+        self.n_rewards = 0
+        self.n_dreams = 0
         self.history: list[dict] = []
 
     # ================================================================ #
@@ -165,6 +200,12 @@ class SpikeBrain:
                      assoc_indices, motor_indices,
                      weight=self.cfg.learn_weight)
 
+        # Imprint direct sens → motor (one-shot plus fort, bypass assoc)
+        if self.syn_sens_to_motor is not None:
+            imprint_path(self.syn_sens_to_motor,
+                         sensory_indices, motor_indices,
+                         weight=self.cfg.direct_sens_motor_weight)
+
         # Enregistre le fait
         entry = {
             "fact": fact,
@@ -209,18 +250,8 @@ class SpikeBrain:
         # Simule 2x plus de ticks pour le recall (laisser le temps de propager)
         sim_ticks = self.cfg.sim_ticks * 2
 
-        # Simule n_ticks avec input Poisson
-        motor_spike_log = []
-        for _ in range(sim_ticks):
-            # Poisson: on masque le courant statique
-            mask = (self.rng.random(self.cfg.n_sensory) < self.cfg.poisson_rate).astype(np.float32)
-            I_tick = I_static * mask
-            self.net.tick(I_tick)
-            # STDP online (optionnel)
-            if self.cfg.stdp_enabled:
-                self._apply_stdp()
-            # Log moteur
-            motor_spike_log.append(self.net.last_spikes["motor"].copy())
+        # Simule avec _simulate (gère aussi synapse directe)
+        total_motor_counts, motor_spike_log = self._simulate(I_static, sim_ticks)
 
         # Décode les spikes moteurs cumulés
         total_motor_counts = np.stack(motor_spike_log).sum(axis=0).astype(np.int32)
@@ -282,7 +313,7 @@ class SpikeBrain:
     # STDP — appelé à chaque tick
     # ================================================================ #
     def _apply_stdp(self) -> None:
-        """Applique STDP sur les 3 groupes de synapses."""
+        """Applique STDP sur tous les groupes de synapses."""
         ls = self.net.last_spikes
         if not ls:
             return
@@ -292,6 +323,56 @@ class SpikeBrain:
         self.stdp_sens_assoc.update(spikes_sens, spikes_assoc)
         self.stdp_assoc_assoc.update(spikes_assoc, spikes_assoc)
         self.stdp_assoc_motor.update(spikes_assoc, spikes_motor)
+        # STDP sur la synapse directe aussi
+        if self.stdp_sens_motor is not None:
+            self.stdp_sens_motor.update(spikes_sens, spikes_motor)
+
+    def _simulate(self, I_static: np.ndarray, n_ticks: int,
+                  record_motor: bool = True) -> tuple[np.ndarray, list]:
+        """
+        Simule n_ticks avec input Poisson. Applique aussi la synapse directe
+        sens→motor à chaque tick (si elle existe).
+
+        Return:
+            total_motor_counts (n_motor,) int32
+            motor_spike_log: list de masques booléens par tick
+        """
+        motor_spike_log = []
+        sensory_spike_log = []
+        for _ in range(n_ticks):
+            mask = (self.rng.random(self.cfg.n_sensory) < self.cfg.poisson_rate).astype(np.float32)
+            I_tick = I_static * mask
+            # Tick standard (propage sens→assoc→motor)
+            self.net.tick(I_tick)
+            # Propagation directe sens→motor (si activée)
+            if self.syn_sens_to_motor is not None:
+                spikes_sens = self.net.last_spikes["sensory"]
+                if spikes_sens.any():
+                    # Calcule le courant direct vers motor
+                    I_direct = self.syn_sens_to_motor.propagate(spikes_sens)
+                    if I_direct.max() > 0:
+                        # Injecte dans motor et re-step motor
+                        # On cumule au potentiel motor existant
+                        self.net.motor.V += I_direct * 0.5  # gain modéré
+                        # Re-fire motor si seuil atteint
+                        thresh = self.net.motor.params.V_thresh * self.net.motor.thresh_factor
+                        new_spikes = self.net.motor.V >= thresh
+                        if new_spikes.any():
+                            self.net.motor.V[new_spikes] = self.net.motor.params.V_reset
+                            self.net.motor.refractory[new_spikes] = self.net.motor.params.tau_ref
+                            self.net.motor.spike_count[new_spikes] += 1
+                            self.net.motor.last_spike_time[new_spikes] = self.net.clock.t
+                            # Update last_spikes motor
+                            self.net.last_spikes["motor"] = (
+                                self.net.last_spikes["motor"] | new_spikes
+                            )
+            # STDP
+            if self.cfg.stdp_enabled:
+                self._apply_stdp()
+            motor_spike_log.append(self.net.last_spikes["motor"].copy())
+            sensory_spike_log.append(self.net.last_spikes["sensory"].copy())
+        total_motor = np.stack(motor_spike_log).sum(axis=0).astype(np.int32) if motor_spike_log else np.zeros(self.cfg.n_motor, dtype=np.int32)
+        return total_motor, motor_spike_log
 
     # ================================================================ #
     # CYCLE COGNITIF COMPLET
@@ -336,19 +417,10 @@ class SpikeBrain:
         # Encode l'input en courant
         I_static = self.coder.encode_text_to_current(input_text, gain=self.cfg.input_gain)
 
-        motor_spike_log = []
-        sensory_spike_log = []
-        for _ in range(self.cfg.sim_ticks):
-            mask = (self.rng.random(self.cfg.n_sensory) < self.cfg.poisson_rate).astype(np.float32)
-            I_tick = I_static * mask
-            self.net.tick(I_tick)
-            if self.cfg.stdp_enabled:
-                self._apply_stdp()
-            motor_spike_log.append(self.net.last_spikes["motor"].copy())
-            sensory_spike_log.append(self.net.last_spikes["sensory"].copy())
-
-        # Activité motrice cumulée
-        total_motor_counts = np.stack(motor_spike_log).sum(axis=0).astype(np.int32)
+        # Simule avec _simulate (gère aussi synapse directe)
+        total_motor_counts, motor_spike_log = self._simulate(I_static, self.cfg.sim_ticks)
+        # Pour stats
+        sensory_total = int(self.net.sensory.spike_count.sum())
 
         # ---- 4. Déclenche un outil par activité motrice ----
         tool_name, _, tool_obj = self.agent.maybe_trigger_tool_by_activity(total_motor_counts)
@@ -396,7 +468,7 @@ class SpikeBrain:
                 else:
                     response = (f"[résonance] J'ai traité votre input "
                                 f"({int(total_motor_counts.sum())} spikes moteur, "
-                                f"{int(np.stack(sensory_spike_log).sum())} sensory). "
+                                f"{sensory_total} sensory). "
                                 f"Memoire: {len(self.facts)} faits appris.")
 
         t_total = (time.time() - t_start) * 1000
@@ -408,7 +480,7 @@ class SpikeBrain:
             "tool_result": tool_result if tool_name else None,
             "query_match": query_match,
             "motor_total_spikes": int(total_motor_counts.sum()),
-            "sensory_total_spikes": int(np.stack(sensory_spike_log).sum()),
+            "sensory_total_spikes": sensory_total,
             "time_ms": t_total,
             "n_facts": len(self.facts),
         }
@@ -436,6 +508,195 @@ class SpikeBrain:
                 return f"[appris] {fact} = {value}"
             return f"[appris] {fact}"
         return result.get("response", "[erreur]")
+
+    # ================================================================ #
+    # R-STDP — récompense/punition
+    # ================================================================ #
+    def give_reward(self, reward: float = 1.0) -> dict:
+        """
+        Applique un signal de récompense à tous les trackers R-STDP.
+        Ne fonctionne que si cfg.rstdp_enabled = True.
+
+        Args:
+            reward: positif pour renforcer, négatif pour punir
+        """
+        if not self.cfg.rstdp_enabled:
+            return {"status": "disabled", "msg": "R-STDP not enabled. Use --rstdp flag."}
+        if not isinstance(self.stdp_sens_assoc, RSTDPTracker):
+            return {"status": "disabled", "msg": "Trackers are not R-STDP."}
+        self.stdp_sens_assoc.apply_reward(reward)
+        self.stdp_assoc_assoc.apply_reward(reward)
+        self.stdp_assoc_motor.apply_reward(reward)
+        if self.stdp_sens_motor is not None:
+            self.stdp_sens_motor.apply_reward(reward)
+        self.n_rewards += 1
+        return {"status": "applied", "reward": reward, "n_rewards": self.n_rewards}
+
+    # ================================================================ #
+    # MODE RÊVE — replay aléatoire pour consolider STDP
+    # ================================================================ #
+    def dream(self, n_replays: int | None = None,
+              ticks_per_replay: int = 30) -> dict:
+        """
+        Mode rêve: rejoue aléatoirement des faits appris pour consolider
+        les synapses via STDP.
+
+        Principe biologique: pendant le sommeil, le cerveau "replay" les
+        patterns d'activité de la journée. La STDP renforce alors les
+        chemains souvent activés.
+
+        Args:
+            n_replays: nombre de replays (défaut: cfg.dream_default_replays)
+            ticks_per_replay: durée de chaque replay en ticks
+        """
+        if not self.cfg.dream_enabled:
+            return {"status": "disabled"}
+        if not self.facts:
+            return {"status": "no_facts", "msg": "Rien à rêver."}
+
+        n = n_replays or self.cfg.dream_default_replays
+        n = min(n, len(self.facts) * 3)  # max 3x le nombre de faits
+
+        total_spikes = 0
+        replays_done = 0
+
+        for i in range(n):
+            # Choisit un fait aléatoire
+            entry = self.facts[self.rng.integers(0, len(self.facts))]
+            fact = entry["fact"]
+            # Reset réseau (mémoire de travail fraîche pour chaque replay)
+            self.net.reset(soft=False)
+            # Encode le fact en courant
+            I_static = self.coder.encode_text_to_current(fact, gain=self.cfg.input_gain)
+            # Simule sans STDP (le dream consolide, n'apprend pas de nouveau)
+            stdp_was_enabled = self.cfg.stdp_enabled
+            self.cfg.stdp_enabled = True  # ON pour consolider
+            total_motor, _ = self._simulate(I_static, ticks_per_replay)
+            total_spikes += int(total_motor.sum())
+            replays_done += 1
+            self.cfg.stdp_enabled = stdp_was_enabled
+
+        self.n_dreams += 1
+        return {
+            "status": "dreamed",
+            "n_replays": replays_done,
+            "total_spikes": total_spikes,
+            "n_dreams_session": self.n_dreams,
+        }
+
+    # ================================================================ #
+    # PERSISTANCE — save/load
+    # ================================================================ #
+    def save(self, path: str) -> None:
+        """Sauvegarde l'état du cerveau (synapses, vocab, facts)."""
+        os.makedirs(path, exist_ok=True)
+        # Synapses (sparse)
+        sp.save_npz(os.path.join(path, "W_sens_assoc.npz"),
+                    self.net.syn_sens_to_assoc.W)
+        sp.save_npz(os.path.join(path, "W_assoc_assoc.npz"),
+                    self.net.syn_assoc_to_assoc.W)
+        sp.save_npz(os.path.join(path, "W_assoc_motor.npz"),
+                    self.net.syn_assoc_to_motor.W)
+        if self.syn_sens_to_motor is not None:
+            sp.save_npz(os.path.join(path, "W_sens_motor.npz"),
+                        self.syn_sens_to_motor.W)
+        # Vocab
+        np.save(os.path.join(path, "id2token.npy"),
+                np.array(self.coder.id2token, dtype=object), allow_pickle=True)
+        # Facts (sans les indices, on reconstruira au load)
+        facts_clean = [{k: v for k, v in f.items() if k != "assoc_indices"}
+                       for f in self.facts]
+        with open(os.path.join(path, "facts.json"), "w", encoding="utf-8") as f:
+            json.dump(facts_clean, f, ensure_ascii=False, indent=2)
+        # History
+        with open(os.path.join(path, "history.json"), "w", encoding="utf-8") as f:
+            json.dump(self.history, f, ensure_ascii=False, indent=2, default=str)
+        # Config
+        cfg_dict = {
+            "n_sensory": self.cfg.n_sensory,
+            "n_associative": self.cfg.n_associative,
+            "n_motor": self.cfg.n_motor,
+            "neurons_per_token": self.cfg.neurons_per_token,
+            "sim_ticks": self.cfg.sim_ticks,
+            "input_gain": self.cfg.input_gain,
+            "poisson_rate": self.cfg.poisson_rate,
+            "stdp_enabled": self.cfg.stdp_enabled,
+            "rstdp_enabled": self.cfg.rstdp_enabled,
+            "learn_weight": self.cfg.learn_weight,
+            "motor_trigger_threshold": self.cfg.motor_trigger_threshold,
+            "direct_sens_motor": self.cfg.direct_sens_motor,
+            "direct_sens_motor_weight": self.cfg.direct_sens_motor_weight,
+            "dream_enabled": self.cfg.dream_enabled,
+            "dream_default_replays": self.cfg.dream_default_replays,
+            "n_learns": self.n_learns,
+            "n_calls": self.n_calls,
+            "n_tool_calls": self.n_tool_calls,
+            "n_rewards": self.n_rewards,
+            "n_dreams": self.n_dreams,
+        }
+        with open(os.path.join(path, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(cfg_dict, f, indent=2)
+
+    def load(self, path: str) -> None:
+        """Charge un état sauvegardé."""
+        # Config
+        with open(os.path.join(path, "config.json"), "r", encoding="utf-8") as f:
+            cfg_dict = json.load(f)
+        # Update cfg
+        for k, v in cfg_dict.items():
+            if hasattr(self.cfg, k):
+                setattr(self.cfg, k, v)
+        # Restore stats
+        self.n_learns = cfg_dict.get("n_learns", 0)
+        self.n_calls = cfg_dict.get("n_calls", 0)
+        self.n_tool_calls = cfg_dict.get("n_tool_calls", 0)
+        self.n_rewards = cfg_dict.get("n_rewards", 0)
+        self.n_dreams = cfg_dict.get("n_dreams", 0)
+        # Synapses
+        self.net.syn_sens_to_assoc.W = sp.load_npz(
+            os.path.join(path, "W_sens_assoc.npz"))
+        self.net.syn_assoc_to_assoc.W = sp.load_npz(
+            os.path.join(path, "W_assoc_assoc.npz"))
+        self.net.syn_assoc_to_motor.W = sp.load_npz(
+            os.path.join(path, "W_assoc_motor.npz"))
+        if os.path.exists(os.path.join(path, "W_sens_motor.npz")):
+            self.syn_sens_to_motor.W = sp.load_npz(
+                os.path.join(path, "W_sens_motor.npz"))
+        # Vocab
+        id2token_arr = np.load(os.path.join(path, "id2token.npy"),
+                                allow_pickle=True)
+        self.coder.id2token = list(id2token_arr)
+        self.coder.token2id = {t: i for i, t in enumerate(self.coder.id2token)}
+        # Facts
+        with open(os.path.join(path, "facts.json"), "r", encoding="utf-8") as f:
+            facts_clean = json.load(f)
+        # Reconstruit les indices
+        self.facts = []
+        for entry in facts_clean:
+            fact = entry["fact"]
+            value = entry["value"]
+            fact_tokens = tokenize(fact)
+            value_tokens = tokenize(value) if value else fact_tokens
+            fact_ids = [self.coder.token2id.get(t, 1) for t in fact_tokens]
+            value_ids = [self.coder.token2id.get(t, 1) for t in value_tokens]
+            sensory_indices = []
+            for tid in fact_ids:
+                slot = self.coder.get_sensory_slot(tid)
+                sensory_indices.extend(range(slot.start, slot.stop))
+            motor_indices = []
+            for tid in value_ids:
+                slot = self.coder.get_motor_slot(tid)
+                motor_indices.extend(range(slot.start, slot.stop))
+            entry["fact_ids"] = fact_ids
+            entry["value_ids"] = value_ids
+            entry["sensory_indices"] = sensory_indices
+            entry["motor_indices"] = motor_indices
+            entry["assoc_indices"] = []  # perdu, pas grave
+            self.facts.append(entry)
+        # History
+        if os.path.exists(os.path.join(path, "history.json")):
+            with open(os.path.join(path, "history.json"), "r", encoding="utf-8") as f:
+                self.history = json.load(f)
 
     # ================================================================ #
     # STATS

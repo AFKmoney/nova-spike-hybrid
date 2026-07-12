@@ -38,6 +38,7 @@ def parse_args():
     p.add_argument("--small", action="store_true", help="config légère")
     p.add_argument("--large", action="store_true", help="config large")
     p.add_argument("--no-stdp", action="store_true", help="désactive STDP")
+    p.add_argument("--rstdp", action="store_true", help="active R-STDP (reward-modulated)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--demo", action="store_true")
     return p.parse_args()
@@ -45,16 +46,18 @@ def parse_args():
 
 def make_config(args) -> SpikeConfig:
     if args.small:
-        cfg = SpikeConfig(n_sensory=200, n_associative=500, n_motor=150,
+        cfg = SpikeConfig(n_sensory=300, n_associative=500, n_motor=300,
                           sim_ticks=30, debug=args.debug)
     elif args.large:
-        cfg = SpikeConfig(n_sensory=600, n_associative=2500, n_motor=400,
+        cfg = SpikeConfig(n_sensory=900, n_associative=2500, n_motor=900,
                           sim_ticks=60, debug=args.debug)
     else:
-        cfg = SpikeConfig(n_sensory=400, n_associative=1500, n_motor=300,
+        cfg = SpikeConfig(n_sensory=600, n_associative=1500, n_motor=600,
                           sim_ticks=50, debug=args.debug)
     if args.no_stdp:
         cfg.stdp_enabled = False
+    if args.rstdp:
+        cfg.rstdp_enabled = True
     return cfg
 
 
