@@ -1,13 +1,13 @@
-# NOVA + SPIKE + HYBRID — A Non-Transformer AI Stack
+# NOVA + SPIKE + AETHER — A Non-Transformer AI Stack
 
-> Three CPU-only, GPU-free, transformer-free AI brains — built from scratch, in pure Python.
+> Four CPU-only, GPU-free, transformer-free AI brains — built from scratch, in pure Python.
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![No GPU](https://img.shields.io/badge/GPU-not%20required-red.svg)](#)
 [![No Transformer](https://img.shields.io/badge/Transformer-none-orange.svg)](#)
 
-This repo is a from-scratch exploration of three alternative AI paradigms — none of which use attention, none of which require a GPU, none of which call an external LLM. Together they form a complete stack: symbolic HD memory, spiking temporal reasoning, and a hybrid orchestrator that combines both.
+This repo is a from-scratch exploration of **four alternative AI paradigms** — none of which use attention, none of which require a GPU, none of which call an external LLM. Together they form a complete stack: hyperdimensional memory, spiking temporal reasoning, brain-inspired cognition, and a hybrid orchestrator that combines them all.
 
 ---
 
@@ -17,9 +17,10 @@ This repo is a from-scratch exploration of three alternative AI paradigms — no
 |---|---|---|---|---|---|
 | **NOVA** | Hyperdimensional Computing (HDC) | Sparse Distributed Memory (Kanerva SDM) | One-shot SDM write | ~80 ms | ~57 MB |
 | **SPIKE** | Spiking Neural Network (LIF + STDP) | CSR sparse synapses | One-shot imprint + STDP + R-STDP | ~20 ms | **0.45 MB** |
-| **HYBRID** | Both | Both | Double-write | ~80 ms | ~58 MB |
+| **AETHER** | HDC + cognitive loop + brain modules | SDM + KB triples + episodic | One-shot teach + attractor | ~300 ms | ~30 MB |
+| **HYBRID** | NOVA + SPIKE | Both | Double-write | ~80 ms | ~58 MB |
 
-All three are auto-contained (no API), run on a single CPU core, and learn new facts in under 1 ms per fact.
+All four are auto-contained (no API), run on a single CPU core, and learn new facts in under 1 ms per fact (300 ms for AETHER's full cognitive loop).
 
 ---
 
@@ -33,44 +34,66 @@ Modern LLMs are extraordinary — but they all share five structural locks:
 4. **Catastrophic forgetting** — knowledge is compressed into weights
 5. **Black box** — hard to audit, hard to debug
 
-This repo asks: **what if we threw away the transformer entirely?** What can we build using only biologically-plausible primitives — hyperdimensional vectors, sparse distributed memory, leaky integrate-and-fire neurons, spike-timing-dependent plasticity?
+This repo asks: **what if we threw away the transformer entirely?** What can we build using only biologically-plausible primitives — hyperdimensional vectors, sparse distributed memory, leaky integrate-and-fire neurons, spike-timing-dependent plasticity, attractor networks, global workspace, predictive coding?
 
-The answer is three working AI systems. None of them will replace GPT-4. But they prove that the transformer is **not the only path** to useful artificial intelligence.
+The answer is **four working AI systems**. None of them will replace GPT-4. But they prove that the transformer is **not the only path** to useful artificial intelligence.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    HYBRID BRAIN (orchestrator)                    │
-│  ┌──────────────────────────┐  ┌─────────────────────────────┐  │
-│  │      SPIKE (SNN)         │  │        NOVA (HDC)           │  │
-│  │  ┌─────────────────────┐ │  │  ┌──────────────────────┐   │  │
-│  │  │ Sensory (600)       │ │  │  │ HD vectors D=10000   │   │  │
-│  │  │  ↓ (CSR sparse)     │ │  │  │     ↓ bind / bundle │   │  │
-│  │  │ Associative (1500)  │ │  │  │ SDM (50000 loc)      │   │  │
-│  │  │  ↓ + direct skip    │ │  │  │     ↓ cleanup        │   │  │
-│  │  │ Motor (600)         │ │  │  │ Recall + Learn       │   │  │
-│  │  └─────────────────────┘ │  │  └──────────────────────┘   │  │
-│  │  STDP + R-STDP + Dream   │  │  One-shot, noise-robust     │  │
-│  │  Lazy spike buffer       │  │  Save / Load                │  │
-│  │  Agentic tool layer      │  │  Agentic tool layer         │  │
-│  └──────────────────────────┘  └─────────────────────────────┘  │
-│                                                                   │
-│  Worked examples:                                                 │
-│    > apprends que Mars est une planète                            │
-│      → double-write to SPIKE synapses + NOVA SDM                  │
-│    > que sais-tu sur Mars                                         │
-│      → SPIKE simulates, falls back to NOVA if low activity        │
-│    > calcule 15 fois 3                                            │
-│      → agentic layer dispatches to calculator tool                │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                     HYBRID BRAIN (orchestrator)                         │
+│  ┌──────────────────────────┐  ┌─────────────────────────────────────┐│
+│  │      SPIKE (SNN)         │  │          NOVA (HDC)                 ││
+│  │  ┌─────────────────────┐ │  │  ┌──────────────────────────────┐  ││
+│  │  │ Sensory (600)       │ │  │  │ HD vectors D=10000           │  ││
+│  │  │  ↓ (CSR sparse)     │ │  │  │     ↓ bind / bundle         │  ││
+│  │  │ Associative (1500)  │ │  │  │ SDM (50000 loc)              │  ││
+│  │  │  ↓ + direct skip    │ │  │  │     ↓ cleanup                │  ││
+│  │  │ Motor (600)         │ │  │  │ Recall + Learn               │  ││
+│  │  └─────────────────────┘ │  │  └──────────────────────────────┘  ││
+│  │  STDP + R-STDP + Dream   │  │  One-shot, noise-robust             ││
+│  │  Lazy spike buffer       │  │  Save / Load                        ││
+│  │  Agentic tool layer      │  │  Agentic tool layer                 ││
+│  └──────────────────────────┘  └─────────────────────────────────────┘│
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │                     AETHER (v4 brain-inspired)                   │ │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐   │ │
+│  │  │ VSA / HDC      │  │ Cognitive Loop │  │ Agentic Tools    │   │ │
+│  │  │ 4096-dim ±1    │  │ PERCEIVE →     │  │ calc/time/recall │   │ │
+│  │  │ bind/bundle    │  │ RETRIEVE →     │  │ teach/python/    │   │ │
+│  │  │ permute        │  │ DELIBERATE →   │  │ list_kb/compare  │   │ │
+│  │  └────────────────┘  │ ACT            │  └──────────────────┘   │ │
+│  │  ┌────────────────┐  └────────────────┘                          │ │
+│  │  │ SDM (Kanerva)  │  ┌─────────────────────────────────────────┐ │ │
+│  │  │ + KB triples   │  │ Brain-inspired v4 modules:              │ │ │
+│  │  │ + Episodic     │  │ • Kuramoto oscillators (binding)        │ │ │
+│  │  │ + Attractors   │  │ • Attractor networks (stable thoughts)  │ │ │
+│  │  └────────────────┘  │ • Global Workspace (Baars)               │ │ │
+│  │                      │ • Predictive coding (Friston)            │ │ │
+│  │                      │ • Hierarchical cortex (4 levels)         │ │ │
+│  │                      │ • Neuromodulators (dopamine, serotonin…) │ │ │
+│  │                      │ • Comprehension integrator               │ │ │
+│  │                      │ • Consciousness module (self-model)      │ │ │
+│  │                      └─────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  Worked examples:                                                       │
+│    > teach Paris is the capital of France                               │
+│      → AETHER stores triple (paris, capital_of, france) in SDM          │
+│    > What is the capital of France?                                     │
+│      → AETHER cognitive loop retrieves "paris" in ~300 ms              │
+│    > calcule 15 fois 3                                                  │
+│      → SPIKE/NOVA/HYBRID agentic layer dispatches to calculator         │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## The Three Paradigms
+## The Four Paradigms
 
 ### 1. NOVA — Neural Oscillatory Vector Architecture
 
@@ -125,75 +148,50 @@ Three populations wired together:
 
 *Figure 3: Weight heatmaps (top-left 100×100 submatrix of each synaptic group). Sparse structure is clearly visible. Direct sensory→motor bypass carries the strongest imprinted weights.*
 
----
+### 3. AETHER — Adaptive Emergent Thinking Hyperdimensional Engine for Reasoning
 
-## Memory & Recall
+**Substrate**: Hyperdimensional Computing (4096-dim bipolar vectors) + a brain-inspired cognitive architecture.
 
-When you tell any brain `apprends que Mars est une planète`, the fact is stored in under 1 ms. Asking `que sais-tu sur Mars` later triggers a recall:
+AETHER is the most ambitious of the three — it adds **brain-inspired modules** on top of the HDC + SDM foundation:
 
-![Motor activity per token during recall](docs/images/03_motor_activity.png)
+| Module | Inspired by | Role |
+|---|---|---|
+| `kuramoto.py` | Kuramoto oscillators | Cognitive binding via phase synchrony |
+| `attractor.py` | Hopfield / ring attractors | Stable discrete + continuous thought patterns |
+| `global_workspace.py` | Baars' Global Workspace Theory | Conscious broadcast + ignition |
+| `predictive.py` | Friston's predictive coding | Free energy minimization |
+| `hierarchy.py` | Predictive cortex | 4-level hierarchy (sensory → feature → concept → abstract) |
+| `neuromodulators.py` | Dopamine / serotonin / ACh / NE | Modulates learning rate + attention |
+| `comprehension.py` | Multi-indicator understanding | Integrates coherence, novelty, prediction |
+| `consciousness.py` | Self-model + metacognition | Self-awareness, narrative buffer |
+| `episodic_memory.py` | Hippocampal episodic memory | Time-stamped episodes |
+| `causal.py` | Causal reasoning | A causes B relations |
+| `counterfactual.py` | What-if reasoning | Counterfactual scenarios |
+| `mental_simulation.py` | Mental simulation | "Imagine if…" |
+| `commonsense.py` | Common-sense KB | Basic world knowledge |
+| `curiosity.py` | Curiosity-driven exploration | Novelty seeking |
+| `meta_learning.py` | Learning to learn | Adaptive learning strategies |
+| `self_modify.py` | Self-modification | Introspective code changes |
+| `socratic.py` | Socratic dialogue | Question-driven reasoning |
+| `language_model.py` | HD n-gram LM | Free-form generation |
+| `composer.py` | Tool composition | Multi-step tool pipelines |
+| `multimodal.py` | Multi-modal | Image + audio HD encoders |
+| `web.py` | RAG | Offline Wikipedia KB |
+| `pretrained.py` | Pretrained KB | Concept taxonomy, synonyms, antonyms |
 
-*Figure 4: Motor activity per token during three different recalls. The correct value token dominates each time (high score), validating that the imprinted pathway reliably reactivates the right motor slot.*
+**Cognitive loop**: AETHER's reasoning is iterative — PERCEIVE → RETRIEVE → DELIBERATE → ACT, running until the "thought" HD vector stabilizes (similarity between consecutive thoughts > 0.92) or max cycles exhausted.
 
-For NOVA, recall is content-addressable — the query is encoded into HD space, the SDM is read at that address, and a cleanup pass finds the closest stored value. Robust to ~30% noise in the query.
+![AETHER cognitive loop convergence](docs/images/07_aether_cognitive_loop.png)
 
-For SPIKE, recall is a simulation — the query drives the sensory population, activity propagates through the (imprinted) associative reservoir, and the motor population's spike counts reveal the answer.
+*Figure 4: AETHER cognitive loop in action. Three different queries, each showing how the working-memory HD vector converges over cycles. The "thought" stabilizes as the loop retrieves relevant memories and deliberates.*
 
----
+**Attractor networks**: AETHER stores patterns as attractors — noisy inputs converge back to the learned pattern:
 
-## Population Dynamics
+![AETHER attractor convergence](docs/images/08_aether_attractor.png)
 
-A key property of SNNs is genuine temporal dynamics. SPIKE continues to exhibit activity after the input is removed:
+*Figure 5: Attractor network convergence. A pattern is stored, then queried with 20% of its bits flipped. In a few steps, the network recovers the original pattern — this is the HD analog of Hopfield networks.*
 
-![Population dynamics — input then silence](docs/images/05_population_dynamics.png)
-
-*Figure 5: Population dynamics. Input is active for ticks 0–30, then removed. The associative reservoir (yellow) sustains activity well past input offset — this is the "echo state" property. Motor output (red) tracks the reservoir's evolving state. This temporal persistence is impossible in feed-forward transformers.*
-
-NOVA's resonator exhibits a similar property — its state field converges towards attractor basins:
-
-![NOVA resonator energy landscape](docs/images/06_nova_energy.png)
-
-*Figure 6: NOVA resonator energy and state norm over 50 integration steps. Energy decreases as the field settles into an attractor; the state norm stabilizes. This is the continuous-reasoning analog of "the network is thinking about something."*
-
----
-
-## Agentic Tool Calling
-
-All three brains share a common agentic layer. Each tool has:
-- An HD / sensory signature built from its keywords
-- A regex pattern for argument extraction
-- A Python executor
-
-Tools fire when either (a) the symbolic regex matches, or (b) the motor activity in the tool's slot crosses a threshold. **No LLM is consulted to decide tool invocation.**
-
-Available tools:
-- `calculator` — arithmetic, supports French words ("fois", "plus", "racine carrée")
-- `python` — subprocess-isolated Python execution
-- `time` — current date/time
-- `ls` — directory listing
-- `file_read` — text file reader
-
-Example session:
-```
-> apprends que Paris est la capitale de la France
-  [appris] Paris = la capitale de la France            (28 ms)
-
-> que sais-tu sur Paris
-  [mémoire] la capitale de la France (score=86.2)      (90 ms)
-
-> calcule 15 fois 3
-  [outil:calculator] 15 * 3 = 45                       (12 ms)
-
-> python: print([x**2 for x in range(5)])
-  [outil:python] [0, 1, 4, 9, 16]                      (45 ms)
-
-> quelle heure est-il
-  [outil:time] Il est 14:23:13 le 12/07/2026            (8 ms)
-```
-
----
-
-## HYBRID — Best of Both Worlds
+### 4. HYBRID — Best of Both Worlds
 
 The HYBRID brain writes facts to both SPIKE (fast temporal recall) and NOVA (robust long-term HD memory). On recall, SPIKE runs first; if its motor activity is too low, NOVA is consulted as fallback.
 
@@ -210,6 +208,89 @@ brain = HybridBrain(HybridConfig(
 brain.learn("Einstein", "physicien, relativité")
 print(brain.chat("que sais-tu sur Einstein"))
 # [mémoire] physicien, relativité (confiance: high)
+```
+
+---
+
+## Memory & Recall
+
+When you tell any brain a fact, it's stored in under 1 ms. Asking about it later triggers a recall:
+
+![Motor activity per token during recall](docs/images/03_motor_activity.png)
+
+*Figure 6: SPIKE motor activity per token during three different recalls. The correct value token dominates each time (high score), validating that the imprinted pathway reliably reactivates the right motor slot.*
+
+For NOVA, recall is content-addressable — the query is encoded into HD space, the SDM is read at that address, and a cleanup pass finds the closest stored value. Robust to ~30% noise in the query.
+
+For AETHER, recall goes through the cognitive loop — multiple cycles of retrieval and deliberation, with attractor networks stabilizing the answer.
+
+---
+
+## Population Dynamics
+
+A key property of SNNs is genuine temporal dynamics. SPIKE continues to exhibit activity after the input is removed:
+
+![Population dynamics — input then silence](docs/images/05_population_dynamics.png)
+
+*Figure 7: SPIKE population dynamics. Input is active for ticks 0–30, then removed. The associative reservoir (yellow) sustains activity well past input offset — this is the "echo state" property. Motor output (red) tracks the reservoir's evolving state. This temporal persistence is impossible in feed-forward transformers.*
+
+NOVA's resonator exhibits a similar property — its state field converges towards attractor basins:
+
+![NOVA resonator energy landscape](docs/images/06_nova_energy.png)
+
+*Figure 8: NOVA resonator energy and state norm over 50 integration steps. Energy decreases as the field settles into an attractor; the state norm stabilizes. This is the continuous-reasoning analog of "the network is thinking about something."*
+
+---
+
+## Agentic Tool Calling
+
+All four brains share a common agentic layer. Each tool has:
+- An HD / sensory signature built from its keywords
+- A regex pattern for argument extraction
+- A Python executor
+
+Tools fire when either (a) the symbolic regex matches, or (b) the motor activity in the tool's slot crosses a threshold. **No LLM is consulted to decide tool invocation.**
+
+Available tools (union across all brains):
+- `calculator` / `calc` — arithmetic, supports French words ("fois", "plus", "racine carrée")
+- `python` — subprocess-isolated Python execution
+- `time` — current date/time
+- `ls` — directory listing
+- `file_read` — text file reader
+- `recall` — search episodic memory by HD similarity
+- `teach` — parse + store triple/episode (AETHER)
+- `list_kb` — list all known triples (AETHER)
+- `compare` / `explain` / `summarize` / `translate` / `define` / `forget` / `count` (AETHER)
+
+Example session (AETHER):
+```
+> teach Paris is the capital of France
+  learned triple: (paris, capital_of, france) + episode + attractor
+
+> What is the capital of France?
+  It's Paris.
+
+> calc 2+2*5
+  2+2*5 = 12
+
+> list
+  (paris, capital_of, france)
+  ...
+```
+
+Example session (SPIKE/NOVA/HYBRID):
+```
+> apprends que Paris est la capitale de la France
+  [appris] Paris = la capitale de la France            (28 ms)
+
+> que sais-tu sur Paris
+  [mémoire] la capitale de la France (score=86.2)      (90 ms)
+
+> calcule 15 fois 3
+  [outil:calculator] 15 * 3 = 45                       (12 ms)
+
+> python: print([x**2 for x in range(5)])
+  [outil:python] [0, 1, 4, 9, 16]                      (45 ms)
 ```
 
 ---
@@ -253,21 +334,27 @@ Features:
 
 ## Benchmark
 
-Four tasks × three brains. All run on the same CPU.
+Four tasks × four brains. All run on the same CPU.
 
-![Benchmark chart — SPIKE vs NOVA vs HYBRID](docs/images/benchmark_chart.png)
+![Benchmark chart — SPIKE vs NOVA vs AETHER vs HYBRID](docs/images/benchmark_chart_v2.png)
 
-*Figure 7: Benchmark results. Top-left: accuracy per task — all three score 100% on arithmetic and tool calling (deterministic), NOVA wins on memory recall and robustness thanks to HD similarity. Top-right: latency — SPIKE is fastest on arithmetic (~3 ms), NOVA on memory recall (~6 ms). Bottom-left: memory footprint — SPIKE is **130× lighter** than NOVA/HYBRID. Bottom-right: learn vs recall time.*
+*Figure 9: Benchmark v2 results. Top-left: accuracy per task — SPIKE and HYBRID win on arithmetic, NOVA wins on memory recall and robustness. Top-right: latency (log scale) — SPIKE is fastest on arithmetic, NOVA on memory. Bottom-left: memory footprint — SPIKE is the lightest (0.45 MB), AETHER is comparable (30 MB), NOVA/HYBRID heaviest. Bottom-right: learn vs recall time — AETHER's cognitive loop is slowest but most thorough.*
 
-| Task | SPIKE | NOVA | HYBRID |
-|---|---|---|---|
-| Arithmetic | 100% | 100% | 100% |
-| Memory recall | 60% | **80%** | 60% |
-| Tool calling | 100% | 100% | 100% |
-| Robustness (paraphrase) | 60% | **100%** | 80% |
-| **RAM (MB)** | **0.45** | 57.5 | 58.0 |
+| Task | SPIKE | NOVA | AETHER | HYBRID |
+|---|---|---|---|---|
+| Arithmetic | **100%** | **100%** | 60% | **100%** |
+| Memory recall | 60% | **100%** | 60% | 60% |
+| Tool calling | **100%** | **100%** | 0%* | **100%** |
+| Robustness (paraphrase) | **100%** | **100%** | 20% | 60% |
+| **RAM (MB)** | **0.45** | 57.5 | ~30 | 58.0 |
 
-**Key insight**: SPIKE is 130× lighter than NOVA, but NOVA wins on robustness because HD similarity generalizes across paraphrases. HYBRID doesn't automatically combine the best of both — better fallback logic is an active area.
+*AETHER's tool calling accuracy is 0% in the benchmark due to format mismatch (AETHER uses English, the benchmark used French phrasing). AETHER's own tool registry works correctly — see `scripts/test_aether.py` for native demos.
+
+**Key insights**:
+- **SPIKE is 130× lighter** than NOVA/HYBRID (0.45 vs 57 MB)
+- **NOVA wins on robustness** (variations of phrasing) thanks to HD similarity
+- **AETHER is the most cognitively rich** — Kuramoto + attractors + GWT + consciousness
+- **HYBRID doesn't automatically combine the best of both** — better fallback logic is an active area
 
 ---
 
@@ -294,6 +381,11 @@ python spike_cli.py --small --demo
 
 # NOVA — hyperdimensional
 python nova_cli.py --small --demo
+
+# AETHER — brain-inspired cognitive agent
+python -m aether
+# Or with cognitive trace:
+python -m aether --explain
 ```
 
 ### API — Python
@@ -312,6 +404,15 @@ nova = Nova(NovaConfig(D=10000, sdm_locations=20000))
 nova.learn("Paris", "la capitale de la France")
 print(nova.chat("rappelle Paris"))
 # [mémoire] la capitale de la France (confiance: high)
+
+# AETHER
+from aether import AETHER
+agent = AETHER()
+agent.teach("Paris is the capital of France")
+print(agent.ask("What is the capital of France?"))
+# It's Paris.
+print(agent.ask("calc 1234 * 5678"))
+# 1234 * 5678 = 7006652
 
 # HYBRID
 from hybrid import HybridBrain, HybridConfig
@@ -338,7 +439,7 @@ python web/server.py
 
 ```
 my-project/
-├── nova/                  # NOVA — Hyperdimensional brain
+├── nova/                  # NOVA — Hyperdimensional brain (HDC + SDM + resonator)
 │   ├── hd.py              #   HDC primitives (bind, bundle, permute, similarity)
 │   ├── memory.py          #   Sparse Distributed Memory (Kanerva SDM)
 │   ├── tokenizer.py       #   Word-level tokenizer + item memory
@@ -346,9 +447,9 @@ my-project/
 │   ├── decoder.py         #   HD → text (cleanup + greedy generation)
 │   ├── resonator.py       #   Continuous-time dynamic field (attractors)
 │   ├── agent.py           #   Agentic tool layer
-│   └── brain.py           #   Orchestrator (perceive → recall → resonate → respond)
+│   └── brain.py           #   Orchestrator
 │
-├── spike/                 # SPIKE — Spiking neural brain
+├── spike/                 # SPIKE — Spiking neural brain (LIF + STDP)
 │   ├── core.py            #   LIF neuron vectorized
 │   ├── network.py         #   3-population network + CSR synapses
 │   ├── stdp.py            #   Spike-timing-dependent plasticity
@@ -358,7 +459,45 @@ my-project/
 │   ├── visual.py          #   Image → spikes (multi-modal)
 │   ├── coder.py           #   Text ↔ spike encoder/decoder
 │   ├── agent.py           #   Agentic tool layer
-│   └── brain.py           #   Orchestrator (perceive → simulate → decode)
+│   └── brain.py           #   Orchestrator
+│
+├── aether/                # AETHER — Brain-inspired cognitive agent (v4)
+│   ├── hd.py              #   HDC primitives (4096-dim)
+│   ├── memory.py          #   SDM + Associative Memory
+│   ├── encoder.py         #   Text ↔ HD vectors
+│   ├── semantic.py        #   Char n-grams + semantic tagging
+│   ├── reasoning.py       #   Cognitive loop (PERCEIVE/RETRIEVE/DELIBERATE/ACT)
+│   ├── tools.py           #   Agentic tool registry (calc/time/recall/teach/...)
+│   ├── inference.py       #   Inference engine + proof steps
+│   ├── planner.py         #   Multi-step planner + executor
+│   ├── context.py         #   Conversation context
+│   ├── generator.py       #   Response generator
+│   ├── # v3 modules
+│   ├── pretrained.py      #   Semantic KB + concept taxonomy
+│   ├── language_model.py  #   HD n-gram language model
+│   ├── composer.py        #   Tool composition (multi-step pipelines)
+│   ├── web.py             #   RAG (offline Wikipedia)
+│   ├── multimodal.py      #   Image + audio HD encoders
+│   ├── # v4 brain-inspired modules
+│   ├── kuramoto.py        #   Kuramoto oscillator network
+│   ├── attractor.py       #   Discrete + ring + sheet attractors
+│   ├── global_workspace.py#   Baars' Global Workspace Theory
+│   ├── predictive.py      #   Friston's predictive coding
+│   ├── hierarchy.py       #   4-level predictive cortex
+│   ├── neuromodulators.py #   Dopamine / serotonin / ACh / NE
+│   ├── comprehension.py   #   Multi-indicator understanding
+│   ├── consciousness.py   #   Self-model + metacognition
+│   ├── episodic_memory.py #   Time-stamped episodes
+│   ├── causal.py          #   Causal reasoning
+│   ├── counterfactual.py  #   What-if reasoning
+│   ├── mental_simulation.py#  Mental simulation
+│   ├── commonsense.py     #   Common-sense KB
+│   ├── curiosity.py       #   Curiosity-driven exploration
+│   ├── meta_learning.py   #   Learning to learn
+│   ├── self_modify.py     #   Self-modification
+│   ├── socratic.py        #   Socratic dialogue
+│   ├── ... (58 modules total)
+│   └── agent.py           #   AETHER top-level orchestrator
 │
 ├── hybrid/                # HYBRID — NOVA + SPIKE orchestrator
 │   └── __init__.py
@@ -375,10 +514,15 @@ my-project/
 │   ├── spike_demo.py      # SPIKE demo
 │   ├── spike_v2_demo.py   # SPIKE v2 features demo
 │   ├── v3_demo.py         # All v3 features demo
-│   ├── visualize.py       # Generates all PNG figures
-│   └── benchmark.py       # SPIKE vs NOVA vs HYBRID
+│   ├── visualize.py       # Generates all PNG figures (8 plots)
+│   ├── benchmark.py       # SPIKE vs NOVA vs AETHER vs HYBRID
+│   ├── test_aether.py     # AETHER 8-part demo
+│   ├── cognitive_tests.py # AETHER cognitive tests
+│   ├── gpt4_benchmark.py  # AETHER vs GPT-4o benchmark
+│   ├── quick_iq_test.py   # AETHER IQ test
+│   └── ... (15 scripts total)
 │
-├── docs/images/           # Figures used in this README
+├── docs/images/           # Figures used in this README (10 PNGs)
 │
 ├── nova_cli.py            # NOVA interactive CLI
 ├── spike_cli.py           # SPIKE interactive CLI
@@ -389,20 +533,37 @@ my-project/
 
 ## Feature Matrix
 
-| Feature | NOVA | SPIKE | HYBRID |
-|---|:---:|:---:|:---:|
-| One-shot learning | ✅ | ✅ | ✅ |
-| STDP (online) | — | ✅ | ✅ |
-| R-STDP (reward-modulated) | — | ✅ | ✅ |
-| Lazy spike buffer | — | ✅ | ✅ |
-| Direct sensory→motor bypass | — | ✅ | ✅ |
-| Dream mode (replay consolidation) | — | ✅ | ✅ |
-| Save / Load | ✅ | ✅ | ✅ |
-| Agentic tools | ✅ | ✅ | ✅ |
-| Multi-modal (images) | — | ✅ | ✅ |
-| BPE subword tokenizer | — | ✅ | — |
-| Web dashboard | ✅ | ✅ | ✅ |
-| Distributed routing | — | — | ✅ (via orchestrator) |
+| Feature | NOVA | SPIKE | AETHER | HYBRID |
+|---|:---:|:---:|:---:|:---:|
+| One-shot learning | ✅ | ✅ | ✅ | ✅ |
+| STDP (online) | — | ✅ | — | ✅ |
+| R-STDP (reward-modulated) | — | ✅ | — | ✅ |
+| Lazy spike buffer | — | ✅ | — | ✅ |
+| Direct sensory→motor bypass | — | ✅ | — | ✅ |
+| Dream mode (replay consolidation) | — | ✅ | ✅ | ✅ |
+| Save / Load | ✅ | ✅ | ✅ | ✅ |
+| Agentic tools | ✅ | ✅ | ✅ | ✅ |
+| Multi-modal (images) | — | ✅ | ✅ | ✅ |
+| BPE subword tokenizer | — | ✅ | ✅ | — |
+| Cognitive loop (multi-cycle) | — | — | ✅ | — |
+| Kuramoto oscillators | — | — | ✅ | — |
+| Attractor networks | — | — | ✅ | — |
+| Global Workspace Theory | — | — | ✅ | — |
+| Predictive coding | — | — | ✅ | — |
+| Hierarchical cortex | — | — | ✅ | — |
+| Neuromodulators | — | — | ✅ | — |
+| Consciousness module | — | — | ✅ | — |
+| Episodic memory | — | — | ✅ | — |
+| Causal / counterfactual | — | — | ✅ | — |
+| Mental simulation | — | — | ✅ | — |
+| Curiosity-driven exploration | — | — | ✅ | — |
+| Meta-learning | — | — | ✅ | — |
+| Self-modification | — | — | ✅ | — |
+| Socratic dialogue | — | — | ✅ | — |
+| HD language model | — | — | ✅ | — |
+| Tool composition | — | — | ✅ | — |
+| Web dashboard | ✅ | ✅ | — | ✅ |
+| Distributed routing | — | — | — | ✅ (via orchestrator) |
 
 ---
 
@@ -410,12 +571,13 @@ my-project/
 
 This is a **research prototype**, not a production system. Known limitations:
 
-1. **No free-form text generation.** Neither NOVA nor SPIKE generates fluent prose like an LLM. They excel at recall, classification, and tool-calling — not narrative.
+1. **No free-form text generation.** Neither NOVA nor SPIKE generates fluent prose like an LLM. AETHER has a basic HD n-gram language model but it's trigram-grade.
 2. **Tiny vocabulary.** Word-level tokenizers saturate around a few hundred words. The BPE tokenizer helps but isn't yet wired into the main brains.
-3. **No pretraining.** The brains only know what you tell them. There is no web-scale corpus ingestion.
+3. **No pretraining.** The brains only know what you tell them. AETHER has a small pretrained KB (concept taxonomy, synonyms) but no web-scale corpus.
 4. **STDP is slow to converge.** Random initial weights mean SPIKE's "reasoning" is mostly noise until enough imprinting happens. The dream mode helps but it's not reinforcement learning yet.
 5. **HYBRID is not smarter than its parts.** The current fallback logic is too simplistic — better routing and confidence estimation are needed.
-6. **Single-threaded.** Lazy spikes and distributed mode open the door to parallelism, but the current implementation is sequential.
+6. **AETHER's cognitive loop is slow (~300 ms).** It runs up to 8 cycles, each retrieving from SDM and deliberating. Faster convergence is an active area.
+7. **Single-threaded.** Lazy spikes and distributed mode open the door to parallelism, but the current implementation is sequential.
 
 What this project **does** prove:
 - You can build useful AI without transformers
@@ -423,6 +585,7 @@ What this project **does** prove:
 - You can reason temporally without RNNs
 - You can call tools without an LLM
 - You can fit a working brain in **0.45 MB** of RAM
+- You can implement brain-inspired modules (GWT, predictive coding, attractors, neuromodulators) in pure Python
 
 ---
 
@@ -435,7 +598,26 @@ What this project **does** prove:
 - [ ] Web dashboard: stream STDP weight changes in real time
 - [ ] Pre-train SPIKE on a small corpus (Wikipedia FR subset) via STDP
 - [ ] R-STDP agent that learns to call the right tool over many trials
-- [ ] Benchmark vs GPT-4o-mini on the same agent tasks
+- [ ] Wire AETHER's cognitive loop into the HYBRID orchestrator
+- [ ] Benchmark vs GPT-4o-mini on the same agent tasks (see `scripts/gpt4_benchmark.py`)
+- [ ] Add AETHER's consciousness module to the web dashboard
+
+---
+
+## Theoretical References
+
+- Kanerva, P. (1988). *Sparse Distributed Memory*. MIT Press.
+- Kanerva, P. (1996). *Binary Spatter-Coding of Ordered K-tuples*. ICANN.
+- Plate, T. (1995). *Holographic Reduced Representations*. IEEE TR.
+- Gayler, R. (1998). *Multiplicative Binding, Representation Operators, and Analogical Inference*. ETII.
+- Frady, E. P., Kleyko, D., & Sommer, F. T. (2021). *Variable Binding for Sparse Distributed Representations*. Neural Computation.
+- Maass, W. (2002). *Liquid State Machines*. Motivation, Theory, Applications.
+- Bi, G. Q., & Poo, M. M. (1998). *Synaptic Modifications in Cultured Hippocampal Neurons: Dependence on Spike Timing*. J. Neuroscience.
+- Baars, B. J. (1988). *A Cognitive Theory of Consciousness*. Cambridge UP.
+- Friston, K. (2010). *The Free-Energy Principle: A Unified Brain Theory*. Nature Reviews Neuroscience.
+- Kuramoto, Y. (1984). *Chemical Oscillations, Waves, and Turbulence*. Springer.
+
+This project stands on the shoulders of ideas that predate the transformer by decades — and asks why we forgot them.
 
 ---
 
@@ -447,14 +629,6 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-Built in a single brainstorm-to-code session, July 2026.
-
-Inspired by:
-- Kanerva's Sparse Distributed Memory (1988)
-- Research on Hyperdimensional Computing (Plate 1995, Kanerva 2009)
-- Liquid State Machines and reservoir computing (Maass 2002)
-- Biological STDP (Bi & Poo 1998)
-- Florian Röhner's work on R-STDP
-- The whole "third generation neural networks" tradition
+Built across multiple brainstorm-to-code sessions, July 2026.
 
 This project stands on the shoulders of ideas that predate the transformer by decades — and asks why we forgot them.
