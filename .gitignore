@@ -1,2 +1,32 @@
+# Sensitive
+.env
+*.key
+*.pem
+*.pat
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project internals (not for git)
 skills/
 node_modules/
+upload/
+
+# Generated files (keep visualizations, ignore logs)
+*.log
+/tmp/
