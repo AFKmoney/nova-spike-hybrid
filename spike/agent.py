@@ -212,6 +212,12 @@ class SpikeAgent:
     _intent_vectors: dict = field(init=False, default_factory=dict)
 
     def __post_init__(self):
+        # IMPORTANT: deep copy des tools pour éviter le partage d'état
+        # entre instances (DEFAULT_TOOLS est module-level)
+        import copy
+        self.tools = [copy.copy(t) for t in self.tools]
+        for t in self.tools:
+            t.motor_start = -1
         # Calcul de l'offset: place les outils APRÈS les tokens
         # motor_offset = (n_tokens_max * neurons_per_token)
         # Mais on veut que ce soit dynamique. On réserve une zone fixe en

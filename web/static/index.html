@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPIKE Web — Dashboard temps réel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0a0e1a;
+    color: #c8d6e5;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 5px;
+    font-size: 28px;
+  }
+  .subtitle { color: #576574; margin-bottom: 20px; font-size: 13px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+  .panel {
+    background: #151b2e;
+    border: 1px solid #2d3548;
+    border-radius: 8px;
+    padding: 15px;
+    overflow: hidden;
+  }
+  .panel h2 {
+    color: #00d2ff;
+    font-size: 14px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  canvas { display: block; background: #0a0e1a; border-radius: 4px; }
+
+  .stats-grid {
+    grid-column: span 3;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+  .stat-card {
+    background: #151b2e;
+    border: 1px solid #2d3548;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+  }
+  .stat-card .label {
+    color: #576574;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .stat-card .value {
+    color: #00d2ff;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .stat-card .value.small { font-size: 14px; }
+
+  .controls {
+    background: #151b2e;
+    border: 1px solid #2d3548;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+  }
+  .controls-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .controls-row:last-child { margin-bottom: 0; }
+  input[type="text"] {
+    flex: 1;
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    color: #c8d6e5;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: #00d2ff; }
+  button {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    color: #0a0e1a;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,210,255,0.3); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: #2d3548;
+    color: #c8d6e5;
+  }
+
+  .brain-select {
+    display: flex;
+    gap: 5px;
+  }
+  .brain-select button {
+    background: #2d3548;
+    color: #c8d6e5;
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  .brain-select button.active {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    color: #0a0e1a;
+  }
+
+  .log {
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    border-radius: 4px;
+    padding: 10px;
+    height: 180px;
+    overflow-y: auto;
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .log-entry { margin-bottom: 4px; }
+  .log-entry .time { color: #576574; }
+  .log-entry .input { color: #00d2ff; }
+  .log-entry .output { color: #feca57; }
+  .log-entry .system { color: #5f27cd; }
+
+  .footer {
+    text-align: center;
+    color: #576574;
+    font-size: 11px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #2d3548;
+  }
+
+  .response-box {
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    border-radius: 4px;
+    padding: 10px;
+    min-height: 50px;
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 12px;
+    color: #feca57;
+    margin-top: 10px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 15px;
+    font-size: 10px;
+    color: #576574;
+    margin-top: 8px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+
+  .activity-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .activity-bar div {
+    transition: width 0.1s;
+  }
+</style>
+</head>
+<body>
+
+<h1>⚡ SPIKE Web</h1>
+<p class="subtitle">Dashboard temps réel — SNN (LIF + STDP) sur CPU, sans transformer, sans GPU</p>
+
+<div class="controls">
+  <div class="controls-row">
+    <div class="brain-select">
+      <button data-brain="spike" class="active">SPIKE</button>
+      <button data-brain="nova">NOVA</button>
+      <button data-brain="hybrid">HYBRID</button>
+    </div>
+    <input type="text" id="input" placeholder="Tapez un message... (ex: 'calcule 2+2', 'apprends que le chat est un animal', 'que sais-tu sur le chat')" autofocus>
+    <button id="send">Envoyer</button>
+    <button id="dream" class="secondary">Rêve</button>
+    <button id="reward" class="secondary">+1 reward</button>
+    <button id="reset" class="secondary">Reset</button>
+  </div>
+  <div class="response-box" id="response">En attente...</div>
+</div>
+
+<div class="grid">
+  <div class="panel" style="grid-column: span 3;">
+    <h2>Stats globales</h2>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Sensory</div><div class="value" id="stat-sensory">400</div></div>
+      <div class="stat-card"><div class="label">Associative</div><div class="value" id="stat-assoc">1000</div></div>
+      <div class="stat-card"><div class="label">Motor</div><div class="value" id="stat-motor">400</div></div>
+      <div class="stat-card"><div class="label">Vocab</div><div class="value" id="stat-vocab">0</div></div>
+      <div class="stat-card"><div class="label">Faits</div><div class="value" id="stat-facts">0</div></div>
+      <div class="stat-card"><div class="label">Calls</div><div class="value" id="stat-calls">0</div></div>
+      <div class="stat-card"><div class="label">Syn sens→assoc</div><div class="value small" id="stat-syn-sa">0</div></div>
+      <div class="stat-card"><div class="label">Syn assoc→motor</div><div class="value small" id="stat-syn-am">0</div></div>
+      <div class="stat-card"><div class="label">Syn direct</div><div class="value small" id="stat-syn-sm">0</div></div>
+      <div class="stat-card"><div class="label">STDP rewards</div><div class="value" id="stat-rewards">0</div></div>
+      <div class="stat-card"><div class="label">Dreams</div><div class="value" id="stat-dreams">0</div></div>
+      <div class="stat-card"><div class="label">Latency</div><div class="value small" id="stat-latency">-</div></div>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column: span 2;">
+    <h2>Raster plot — Spikes par tick</h2>
+    <canvas id="raster" width="600" height="200"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00d2ff"></div>Sensory</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#feca57"></div>Associative</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6b6b"></div>Motor</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Activité par population</h2>
+    <canvas id="activity" width="280" height="200"></canvas>
+  </div>
+
+  <div class="panel" style="grid-column: span 3;">
+    <h2>Conversation log</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<div class="footer">
+  SPIKE Web — Neural Oscillatory Vector + Spiking Pattern Intelligence · CPU-only · No transformer · No GPU
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+const input = $("input");
+const responseBox = $("response");
+
+let currentBrain = "spike";
+let ws = null;
+let isStreaming = false;
+
+// ============================================================
+// WebSocket management
+// ============================================================
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws/spikes`);
+  ws.onopen = () => logMsg("system", "WebSocket connecté");
+  ws.onclose = () => logMsg("system", "WebSocket déconnecté");
+  ws.onerror = (e) => logMsg("system", "WS erreur: " + e);
+  ws.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    handleWSMessage(data);
+  };
+}
+
+function handleWSMessage(data) {
+  if (data.type === "tick") {
+    drawRaster(data);
+    drawActivity(data);
+    updateLiveStats(data);
+  } else if (data.type === "learn") {
+    logMsg("system", `✓ appris: ${data.result.fact} = ${data.result.value || '(auto)'}`);
+    responseBox.textContent = `[appris] ${data.result.fact} = ${data.result.value || '(auto)'}`;
+    isStreaming = false;
+    fetchStats();
+  } else if (data.type === "done") {
+    logMsg("output", `→ ${data.response}`);
+    responseBox.textContent = data.response;
+    isStreaming = false;
+    fetchStats();
+  } else if (data.type === "error") {
+    logMsg("system", `Erreur: ${data.error}`);
+    isStreaming = false;
+  }
+}
+
+// ============================================================
+// Raster plot
+// ============================================================
+const rasterCanvas = $("raster");
+const rasterCtx = rasterCanvas.getContext("2d");
+const MAX_TICKS = 60;
+let tickHistory = [];
+
+function drawRaster(data) {
+  const t = data.t;
+  tickHistory.push({
+    t: t,
+    sensory: data.sensory,
+    assoc: data.assoc,
+    motor: data.motor,
+  });
+  if (tickHistory.length > MAX_TICKS) tickHistory.shift();
+
+  const W = rasterCanvas.width;
+  const H = rasterCanvas.height;
+  // Sections: sensory (top), associative (mid), motor (bottom)
+  const secH = H / 3;
+
+  rasterCtx.fillStyle = "#0a0e1a";
+  rasterCtx.fillRect(0, 0, W, H);
+
+  // Titres des sections
+  rasterCtx.fillStyle = "#576574";
+  rasterCtx.font = "10px monospace";
+  rasterCtx.fillText("Sensory", 4, 12);
+  rasterCtx.fillText("Associative", 4, secH + 12);
+  rasterCtx.fillText("Motor", 4, secH * 2 + 12);
+
+  const colW = W / MAX_TICKS;
+
+  // Pour chaque tick dans l'historique
+  for (let i = 0; i < tickHistory.length; i++) {
+    const tick = tickHistory[i];
+    const x = i * colW;
+
+    // Sensory
+    rasterCtx.fillStyle = "#00d2ff";
+    for (let n = 0; n < tick.sensory.length; n++) {
+      if (tick.sensory[n]) {
+        const y = (n / tick.sensory.length) * (secH - 20) + 18;
+        rasterCtx.fillRect(x, y, Math.max(1, colW - 0.5), 1);
+      }
+    }
+
+    // Associative (sous-échantillonné)
+    rasterCtx.fillStyle = "#feca57";
+    for (let n = 0; n < tick.assoc.length; n++) {
+      if (tick.assoc[n]) {
+        const y = secH + (n / tick.assoc.length) * (secH - 20) + 18;
+        rasterCtx.fillRect(x, y, Math.max(1, colW - 0.5), 1);
+      }
+    }
+
+    // Motor
+    rasterCtx.fillStyle = "#ff6b6b";
+    for (let n = 0; n < tick.motor.length; n++) {
+      if (tick.motor[n]) {
+        const y = secH * 2 + (n / tick.motor.length) * (secH - 20) + 18;
+        rasterCtx.fillRect(x, y, Math.max(1, colW - 0.5), 1);
+      }
+    }
+  }
+}
+
+// ============================================================
+// Activity bar chart
+// ============================================================
+const actCanvas = $("activity");
+const actCtx = actCanvas.getContext("2d");
+let activityHistory = [];
+
+function drawActivity(data) {
+  activityHistory.push(data.counts);
+  if (activityHistory.length > 50) activityHistory.shift();
+
+  const W = actCanvas.width;
+  const H = actCanvas.height;
+  actCtx.fillStyle = "#0a0e1a";
+  actCtx.fillRect(0, 0, W, H);
+
+  const maxCount = Math.max(
+    ...activityHistory.flatMap(c => [c.sensory, c.assoc, c.motor]),
+    10
+  );
+
+  const barW = W / activityHistory.length;
+  for (let i = 0; i < activityHistory.length; i++) {
+    const c = activityHistory[i];
+    const x = i * barW;
+    // Sensory
+    const hS = (c.sensory / maxCount) * (H / 3 - 5);
+    actCtx.fillStyle = "#00d2ff";
+    actCtx.fillRect(x, H / 3 - hS, barW - 1, hS);
+    // Associative
+    const hA = (c.assoc / maxCount) * (H / 3 - 5);
+    actCtx.fillStyle = "#feca57";
+    actCtx.fillRect(x, (H / 3) * 2 - hA, barW - 1, hA);
+    // Motor
+    const hM = (c.motor / maxCount) * (H / 3 - 5);
+    actCtx.fillStyle = "#ff6b6b";
+    actCtx.fillRect(x, H - hM, barW - 1, hM);
+  }
+
+  // Labels
+  actCtx.fillStyle = "#576574";
+  actCtx.font = "10px monospace";
+  actCtx.fillText(`max: ${maxCount}`, 5, 12);
+}
+
+// ============================================================
+// Stats
+// ============================================================
+function updateLiveStats(data) {
+  // Update pendant la simulation
+}
+
+async function fetchStats() {
+  try {
+    const r = await fetch("/api/stats");
+    const s = await r.json();
+    const brain = s[currentBrain] || s.spike;
+    $("stat-sensory").textContent = brain.n_sensory || brain.D || 0;
+    $("stat-assoc").textContent = brain.n_associative || 0;
+    $("stat-motor").textContent = brain.n_motor || 0;
+    $("stat-vocab").textContent = brain.vocab || 0;
+    $("stat-facts").textContent = brain.n_facts || brain.sdm?.writes || 0;
+    $("stat-calls").textContent = brain.n_calls || 0;
+    $("stat-syn-sa").textContent = brain.synapses?.sens_to_assoc || 0;
+    $("stat-syn-am").textContent = brain.synapses?.assoc_to_motor || 0;
+    $("stat-syn-sm").textContent = brain.synapses?.direct_sens_motor || "—";
+    $("stat-rewards").textContent = brain.n_rewards || 0;
+    $("stat-dreams").textContent = brain.n_dreams || 0;
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ============================================================
+// Log
+// ============================================================
+function logMsg(type, msg) {
+  const t = new Date().toLocaleTimeString();
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `<span class="time">[${t}]</span> <span class="${type}">${msg}</span>`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ============================================================
+// Send message
+// ============================================================
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+  if (isStreaming) return;
+  input.value = "";
+  logMsg("input", `> ${text}`);
+  isStreaming = true;
+
+  if (currentBrain === "spike" && ws && ws.readyState === WebSocket.OPEN) {
+    // Utilise WebSocket pour streamer les spikes
+    tickHistory = [];
+    activityHistory = [];
+    ws.send(JSON.stringify({cmd: "start", input: text}));
+  } else {
+    // Fallback HTTP
+    try {
+      const t0 = performance.now();
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message: text, brain: currentBrain}),
+      });
+      const data = await r.json();
+      const dt = (performance.now() - t0).toFixed(0);
+      $("stat-latency").textContent = dt + "ms";
+      logMsg("output", `→ ${data.response} (${data.time_ms.toFixed(0)}ms)`);
+      responseBox.textContent = data.response;
+    } catch (e) {
+      logMsg("system", `Erreur: ${e}`);
+    }
+    isStreaming = false;
+    fetchStats();
+  }
+}
+
+// ============================================================
+// Buttons
+// ============================================================
+$("send").onclick = sendMessage;
+input.onkeydown = (e) => { if (e.key === "Enter") sendMessage(); };
+
+$("dream").onclick = async () => {
+  logMsg("system", "Mode rêve...");
+  const r = await fetch("/api/dream", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({n_replays: 5, ticks_per_replay: 20, brain: currentBrain}),
+  });
+  const data = await r.json();
+  logMsg("system", `Rêve: ${JSON.stringify(data.result)}`);
+  fetchStats();
+};
+
+$("reward").onclick = async () => {
+  const r = await fetch("/api/reward", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({reward: 1.0}),
+  });
+  const data = await r.json();
+  logMsg("system", `Reward: ${JSON.stringify(data.result)}`);
+  fetchStats();
+};
+
+$("reset").onclick = async () => {
+  await fetch("/api/reset", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({brain: currentBrain}),
+  });
+  tickHistory = [];
+  activityHistory = [];
+  logMsg("system", "Réseau reset");
+};
+
+// Brain select
+document.querySelectorAll(".brain-select button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".brain-select button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentBrain = btn.dataset.brain;
+    logMsg("system", `Cerveau: ${currentBrain.toUpperCase()}`);
+    fetchStats();
+  };
+});
+
+// ============================================================
+// Init
+// ============================================================
+connectWS();
+fetchStats();
+setInterval(fetchStats, 2000);
+
+// Demo messages
+logMsg("system", "SPIKE Web démarré. Essayez:");
+logMsg("system", "  • apprends que le chat est un animal");
+logMsg("system", "  • que sais-tu sur le chat");
+logMsg("system", "  • calcule 15 fois 3");
+logMsg("system", "  • python: print(2**10)");
+</script>
+</body>
+</html>

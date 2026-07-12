@@ -283,7 +283,16 @@ class Agent:
         self.tok = tokenizer
         self.enc = encoder
         self.intent_threshold = intent_threshold
-        self.tools: list[Tool] = tools or list(DEFAULT_TOOLS)
+        # IMPORTANT: on fait une DEEP COPY des tools pour éviter le partage
+        # d'état entre instances (DEFAULT_TOOLS est module-level)
+        import copy
+        if tools is None:
+            self.tools = [copy.copy(t) for t in DEFAULT_TOOLS]
+        else:
+            self.tools = [copy.copy(t) for t in tools]
+        # Reset intent_vector (sera reconstruit par _build_intent_vectors)
+        for t in self.tools:
+            t.intent_vector = None
         self._build_intent_vectors()
 
     def _build_intent_vectors(self) -> None:
