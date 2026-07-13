@@ -150,16 +150,20 @@ class GenerativeBrain:
     # ---------------------------------------------------------------- #
     def generate(self, prompt: str, max_tokens: int | None = None,
                  temperature: float | None = None,
-                 top_k: int | None = None) -> str:
+                 top_k: int | None = None,
+                 top_p: float = 0.9,
+                 repetition_penalty: float = 1.2) -> str:
         """
         Génère une continuation du prompt token-par-token.
-        Utilise le GenerativePredictor (BPE + n-gram 1-7 + backoff + température).
+        Utilise le GenerativePredictor (BPE + n-gram 1-7 + Kneser-Ney + nucleus sampling).
         """
         max_t = max_tokens or self.cfg.max_tokens
         temp = temperature if temperature is not None else self.cfg.temperature
         k = top_k or self.cfg.top_k
         return self.predictor.generate_text(
-            prompt, max_tokens=max_t, temperature=temp, top_k=k, rng=self.rng
+            prompt, max_tokens=max_t, temperature=temp, top_k=k,
+            top_p=top_p, repetition_penalty=repetition_penalty,
+            rng=self.rng
         )
 
     def generate_full(self, prompt: str, max_sentences: int = 3) -> str:
@@ -175,10 +179,89 @@ class GenerativeBrain:
     # ---------------------------------------------------------------- #
     # Raisonnement
     # ---------------------------------------------------------------- #
-    def reason(self, question: str, max_cycles: int = 8) -> str:
-        """Raisonne via le cognitive loop d'AETHER (lazy init)."""
-        self._ensure_aether()
-        return self.aether.ask(question, explain=False)
+    def reason(self, question: str, max_cycles: int = 8,
+               use_aether: bool = False) -> str:
+        """
+        Raisonne sur une question.
+
+        Args:
+            question: la question
+            max_cycles: nombre max de cycles (utilisé seulement par AETHER)
+            use_aether: si True, utilise AETHER cognitive loop (lent, 15s init)
+                        si False (défaut), utilise le predictor (rapide, <50ms)
+        """
+        if use_aether:
+            self._ensure_aether()
+            return self.aether.ask(question, explain=False)
+        return self._reason_with_predictor(question)
+
+    def _reason_with_predictor(self, question: str) -> str:
+        """
+        Raisonne via le predictor (rapide, pas d'AETHER).
+
+        Stratégie:
+          1. Détecte le type de question (what is, who is, where is, capital of, ...)
+          2. Extrait le sujet
+          3. Génère une réponse via le predictor
+        """
+        q_lower = question.lower().strip().rstrip("?")
+
+        # Patterns de questions
+        patterns = [
+            (r"what is the capital of (\w+)", "capital"),
+            (r"who (was|is) (\w+)", "person"),
+            (r"what (is|are) (\w+)", "definition"),
+            (r"where (is|are) (\w+)", "location"),
+            (r"when (was|is|did) (\w+)", "time"),
+            (r"how (do|does|did) (\w+)", "how"),
+            (r"why (is|are|do|does) (\w+)", "why"),
+        ]
+
+        subject = None
+        qtype = None
+        for pat, t in patterns:
+            m = re.search(pat, q_lower)
+            if m:
+                qtype = t
+                if t == "capital":
+                    subject = m.group(1)
+                elif t in ("definition", "location"):
+                    subject = m.group(2)
+                elif t == "person":
+                    subject = m.group(2)
+                elif t == "time":
+                    subject = m.group(2)
+                break
+
+        # Si on a un sujet, génère une réponse ciblée
+        if subject:
+            if qtype == "capital":
+                # "The capital of X is"
+                return self.generate(f"The capital of {subject} is",
+                                      max_tokens=8, temperature=0.3,
+                                      top_p=0.7, repetition_penalty=1.5).strip()
+            elif qtype == "definition":
+                # "X is"
+                return self.generate(f"The {subject} is",
+                                      max_tokens=20, temperature=0.5,
+                                      top_p=0.8, repetition_penalty=1.3).strip()
+            elif qtype == "person":
+                # "X was a"
+                return self.generate(f"{subject.capitalize()} was",
+                                      max_tokens=15, temperature=0.5,
+                                      top_p=0.8, repetition_penalty=1.3).strip()
+            elif qtype == "location":
+                return self.generate(f"{subject.capitalize()} is located",
+                                      max_tokens=12, temperature=0.5,
+                                      top_p=0.8, repetition_penalty=1.3).strip()
+            else:
+                return self.generate(f"The {subject} is",
+                                      max_tokens=20, temperature=0.5,
+                                      top_p=0.8, repetition_penalty=1.3).strip()
+
+        # Sinon: génère depuis la question directement
+        return self.generate(question, max_tokens=20, temperature=0.6,
+                              top_p=0.85, repetition_penalty=1.3).strip()
 
     def reason_with_trace(self, question: str) -> dict:
         """Raisonne et retourne aussi la trace cognitive."""

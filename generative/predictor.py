@@ -22,6 +22,7 @@ import numpy as np
 from collections import defaultdict, Counter
 from dataclasses import dataclass, field
 from typing import Optional
+from functools import lru_cache
 
 
 # Word-level tokenizer
@@ -168,19 +169,34 @@ class GenerativePredictor:
     ngram_counts: dict = field(init=False, default_factory=dict)
     # context_counts[order] = Counter of context tuples (for normalization)
     context_counts: dict = field(init=False, default_factory=dict)
+    # continuation_counts[order] = number of distinct contexts that a word follows (for Kneser-Ney)
+    continuation_counts: dict = field(init=False, default_factory=dict)
+    # distinct_continuations[order] = number of distinct words that follow a context
+    distinct_continuations: dict = field(init=False, default_factory=dict)
     # Unigram counts (special case)
     unigram_counts: Counter = field(init=False, default_factory=Counter)
+    # Kneser-Ney unigram counts (number of distinct bigrams ending with this word)
+    kn_unigram_counts: Counter = field(init=False, default_factory=Counter)
     total_unigrams: int = field(init=False, default=0)
+    total_kn_unigrams: int = field(init=False, default=0)
     # Vocab
     vocab: set = field(init=False, default_factory=set)
 
     # BPE
     bpe: Optional[MinimalBPE] = field(init=False, default=None)
 
+    # Kneser-Ney discount (typical: 0.75)
+    kn_discount: float = 0.75
+    # Cache pour predict_distribution (LRU)
+    _dist_cache: dict = field(init=False, default_factory=dict)
+    _dist_cache_max: int = 10000
+
     def __post_init__(self):
         for n in self.orders:
             self.ngram_counts[n] = Counter()
             self.context_counts[n] = Counter()
+            self.continuation_counts[n] = Counter()
+            self.distinct_continuations[n] = Counter()
         if self.use_bpe:
             self.bpe = MinimalBPE(vocab_size=self.bpe_vocab_size)
 
@@ -232,7 +248,7 @@ class GenerativePredictor:
         }
 
     def _train_sequence(self, tokens: list[str]) -> None:
-        """Count all n-grams in a token sequence."""
+        """Count all n-grams in a token sequence. Also collects Kneser-Ney stats."""
         # Add to vocab
         self.vocab.update(tokens)
 
@@ -248,109 +264,208 @@ class GenerativePredictor:
             for i in range(len(tokens) - n + 1):
                 ngram = tuple(tokens[i:i + n])
                 context = ngram[:-1]
+                word = ngram[-1]
                 self.ngram_counts[n][ngram] += 1
                 self.context_counts[n][context] += 1
+                # Kneser-Ney: count distinct contexts for each word
+                # continuation_counts[n][word] = number of distinct (n-1)-grams ending with this word
+                # We need to track distinct contexts per word
+                if ngram not in self._seen_ngrams:
+                    self._seen_ngrams.add(ngram)
+                    self.continuation_counts[n][word] += 1
+                    self.distinct_continuations[n][context] += 1
+                    # For unigram KN: count distinct bigrams ending with this word
+                    if n == 2:
+                        self.kn_unigram_counts[word] += 1
+                        self.total_kn_unigrams += 1
+
+    # _seen_ngrams must be set before _train_sequence
+    _seen_ngrams: set = field(init=False, default_factory=set)
 
     # ---------------------------------------------------------------- #
-    # Prediction
+    # Prediction — with Kneser-Ney smoothing and LRU cache
     # ---------------------------------------------------------------- #
+    def _kn_prob(self, word: str, context: tuple, order: int) -> float:
+        """
+        Kneser-Ney probability for P(word | context) at given order.
+
+        P_KN(w | ctx) = max(c(ctx, w) - D, 0) / c(ctx)
+                       + lambda(ctx) * P_KN(w | ctx[1:])
+
+        where lambda(ctx) = D * N+(ctx) / c(ctx)
+        and N+(ctx) = number of distinct words following ctx
+        """
+        if order < 2:
+            # Unigram Kneser-Ney: P(w) = N+(·w) / N+(··)
+            if self.total_kn_unigrams > 0:
+                return self.kn_unigram_counts.get(word, 0) / self.total_kn_unigrams
+            # Fallback to regular unigram
+            if self.total_unigrams > 0:
+                return self.unigram_counts.get(word, 0) / self.total_unigrams
+            return 0.0
+
+        ngram = context + (word,)
+        count = self.ngram_counts[order].get(ngram, 0)
+        ctx_total = self.context_counts[order].get(context, 0)
+
+        if ctx_total == 0:
+            # No data at this order, backoff to lower order
+            return self._kn_prob(word, context[1:] if len(context) > 0 else (), order - 1)
+
+        D = self.kn_discount
+        n_plus = self.distinct_continuations[order].get(context, 0)
+        lambda_ = D * n_plus / ctx_total
+
+        # First term: discounted count
+        first = max(count - D, 0) / ctx_total
+
+        # Second term: backoff to lower order
+        backoff_context = context[1:] if len(context) > 0 else ()
+        backoff_prob = self._kn_prob(word, backoff_context, order - 1)
+
+        return first + lambda_ * backoff_prob
+
     def predict_next(self, context: list[str]) -> Optional[tuple[str, float, int]]:
         """
         Predict the next token given a context.
-        Uses backoff: tries highest order first, falls back to lower orders.
+        Uses Kneser-Ney smoothing with backoff.
 
         Returns (token, probability, order_used) or None.
         """
         if not context:
             context = ["<s>"]
 
-        # Try each order from highest to lowest
-        for n in reversed(self.orders):
-            if n < 2:
+        # Find the highest order we can use
+        best_token = None
+        best_prob = -1.0
+        best_order = 1
+
+        # Get all candidate words from the highest-order context
+        max_order = max(n for n in self.orders if n >= 2 and len(context) >= n - 1)
+        ctx = tuple(context[-(max_order - 1):])
+
+        # Candidates: all words that appear after this context in any order
+        candidates = set()
+        for n in self.orders:
+            if n < 2 or len(context) < n - 1:
                 continue
-            if len(context) < n - 1:
+            c = tuple(context[-(n - 1):])
+            for ng in self.ngram_counts[n]:
+                if ng[:-1] == c:
+                    candidates.add(ng[-1])
+
+        # If no candidates, fall back to unigram
+        if not candidates:
+            if self.total_unigrams > 0:
+                best_tok, best_count = None, 0
+                for tok, cnt in self.unigram_counts.items():
+                    if tok in ("<s>", "</s>", "<pad>", "<unk>"):
+                        continue
+                    if cnt > best_count:
+                        best_count = cnt
+                        best_tok = tok
+                if best_tok:
+                    return best_tok, best_count / self.total_unigrams, 1
+            return None
+
+        # Compute KN probability for each candidate
+        for word in candidates:
+            if word in ("<s>", "</s>", "<pad>", "<unk>"):
                 continue
-
-            ctx = tuple(context[-(n - 1):]) if n > 1 else ()
-            ngrams_with_ctx = {ng: c for ng, c in self.ngram_counts[n].items()
-                                if ng[:-1] == ctx}
-
-            if not ngrams_with_ctx:
-                continue
-
-            ctx_total = self.context_counts[n].get(ctx, 0)
-            if ctx_total == 0:
-                continue
-
-            # Find best token
-            best_token = None
-            best_count = 0
-            for ng, c in ngrams_with_ctx.items():
-                if c > best_count:
-                    best_count = c
-                    best_token = ng[-1]
-
-            if best_token is not None:
-                prob = best_count / ctx_total
-                return best_token, prob, n
-
-        # Backoff to unigram
-        if self.total_unigrams > 0:
-            # Pick most common unigram (excluding markers)
-            best_tok, best_count = None, 0
-            for tok, cnt in self.unigram_counts.items():
-                if tok in ("<s>", "</s>", "<pad>", "<unk>"):
+            # Find the order at which this word has data
+            for n in reversed(self.orders):
+                if n < 2 or len(context) < n - 1:
                     continue
-                if cnt > best_count:
-                    best_count = cnt
-                    best_tok = tok
-            if best_tok:
-                return best_tok, best_count / self.total_unigrams, 1
+                c = tuple(context[-(n - 1):])
+                if (c + (word,)) in self.ngram_counts[n]:
+                    prob = self._kn_prob(word, c, n)
+                    if prob > best_prob:
+                        best_prob = prob
+                        best_token = word
+                        best_order = n
+                    break
 
+        if best_token is not None:
+            return best_token, best_prob, best_order
         return None
 
     def predict_distribution(self, context: list[str], top_k: int = 10) -> list[tuple[str, float]]:
-        """Get top-k next tokens with probabilities. Uses backoff."""
+        """
+        Get top-k next tokens with Kneser-Ney probabilities. Uses LRU cache.
+        """
         if not context:
             context = ["<s>"]
 
+        # Cache key: (tuple(context), top_k)
+        cache_key = (tuple(context[-10:]), top_k)  # last 10 tokens for cache key
+        if cache_key in self._dist_cache:
+            return self._dist_cache[cache_key]
+
         # Find the highest order with data
+        max_order = 0
         for n in reversed(self.orders):
-            if n < 2:
+            if n < 2 or len(context) < n - 1:
                 continue
-            if len(context) < n - 1:
-                continue
-
             ctx = tuple(context[-(n - 1):])
-            ngrams_with_ctx = {ng: c for ng, c in self.ngram_counts[n].items()
-                                if ng[:-1] == ctx}
-            if not ngrams_with_ctx:
-                continue
+            # Check if any ngram starts with this context
+            for ng in self.ngram_counts[n]:
+                if ng[:-1] == ctx:
+                    max_order = n
+                    break
+            if max_order > 0:
+                break
 
-            ctx_total = self.context_counts[n].get(ctx, 0)
-            if ctx_total == 0:
-                continue
-
-            # Compute probabilities
-            dist = [(ng[-1], c / ctx_total) for ng, c in ngrams_with_ctx.items()]
+        if max_order == 0:
+            # Backoff to unigram
+            if self.total_kn_unigrams > 0:
+                dist = [(tok, cnt / self.total_kn_unigrams)
+                        for tok, cnt in self.kn_unigram_counts.items()
+                        if tok not in ("<s>", "</s>", "<pad>", "<unk>")]
+            elif self.total_unigrams > 0:
+                dist = [(tok, cnt / self.total_unigrams)
+                        for tok, cnt in self.unigram_counts.items()
+                        if tok not in ("<s>", "</s>", "<pad>", "<unk>")]
+            else:
+                return []
             dist.sort(key=lambda x: -x[1])
-            return dist[:top_k]
+            result = dist[:top_k]
+            self._cache_set(cache_key, result)
+            return result
 
-        # Backoff to unigram
-        if self.total_unigrams > 0:
-            dist = [(tok, cnt / self.total_unigrams)
-                    for tok, cnt in self.unigram_counts.items()
-                    if tok not in ("<s>", "</s>", "<pad>", "<unk>")]
-            dist.sort(key=lambda x: -x[1])
-            return dist[:top_k]
+        # Compute KN probabilities for all candidates
+        ctx = tuple(context[-(max_order - 1):])
+        candidates = set()
+        for ng in self.ngram_counts[max_order]:
+            if ng[:-1] == ctx:
+                candidates.add(ng[-1])
 
-        return []
+        dist = []
+        for word in candidates:
+            if word in ("<s>", "</s>", "<pad>", "<unk>"):
+                continue
+            prob = self._kn_prob(word, ctx, max_order)
+            dist.append((word, prob))
+
+        dist.sort(key=lambda x: -x[1])
+        result = dist[:top_k]
+        self._cache_set(cache_key, result)
+        return result
+
+    def _cache_set(self, key, value):
+        """Set cache with LRU eviction."""
+        if len(self._dist_cache) >= self._dist_cache_max:
+            # Remove oldest (FIFO approximation of LRU)
+            oldest = next(iter(self._dist_cache))
+            del self._dist_cache[oldest]
+        self._dist_cache[key] = value
 
     # ---------------------------------------------------------------- #
     # Generation
     # ---------------------------------------------------------------- #
     def generate(self, prompt_tokens: list[str], max_tokens: int = 20,
                  temperature: float = 0.8, top_k: int = 5,
+                 top_p: float = 0.9,
+                 repetition_penalty: float = 1.2,
                  stop_tokens: Optional[set] = None,
                  rng: Optional[np.random.Generator] = None) -> list[str]:
         """
@@ -360,7 +475,9 @@ class GenerativePredictor:
             prompt_tokens: starting tokens
             max_tokens: max tokens to generate
             temperature: 0=greedy, 1=sample by prob, >1=flatter, <1=sharper
-            top_k: only sample from top-k candidates
+            top_k: only sample from top-k candidates (0 = disable)
+            top_p: nucleus sampling — keep smallest set of tokens with cumulative prob >= p (0 = disable)
+            repetition_penalty: penalize tokens already generated (1.0 = no penalty, 1.2 = typical)
             stop_tokens: tokens that stop generation
             rng: random generator
 
@@ -374,13 +491,45 @@ class GenerativePredictor:
 
         context = list(prompt_tokens)
         generated = []
+        # Track token counts for repetition penalty
+        token_counts = Counter()
 
         for _ in range(max_tokens):
-            dist = self.predict_distribution(context, top_k=max(top_k, 5))
+            dist = self.predict_distribution(context, top_k=max(top_k, 10))
             if not dist:
                 break
 
-            candidates = dist[:top_k]
+            # Apply repetition penalty
+            if repetition_penalty != 1.0:
+                penalized_dist = []
+                for tok, prob in dist:
+                    if token_counts.get(tok, 0) > 0:
+                        # Reduce probability for repeated tokens
+                        prob = prob / (repetition_penalty ** token_counts[tok])
+                    penalized_dist.append((tok, prob))
+                dist = penalized_dist
+                # Re-sort after penalty
+                dist.sort(key=lambda x: -x[1])
+
+            # Top-k filtering
+            if top_k > 0:
+                candidates = dist[:top_k]
+            else:
+                candidates = dist
+
+            # Top-p (nucleus) sampling
+            if top_p > 0 and top_p < 1.0:
+                probs = np.array([p for _, p in candidates], dtype=np.float64)
+                total = probs.sum()
+                if total > 0:
+                    probs = probs / total
+                    cumsum = np.cumsum(probs)
+                    # Keep tokens until cumulative prob >= top_p
+                    cutoff = np.searchsorted(cumsum, top_p) + 1
+                    candidates = candidates[:cutoff]
+
+            if not candidates:
+                break
 
             if temperature <= 0.01:
                 # Greedy
@@ -403,6 +552,7 @@ class GenerativePredictor:
 
             generated.append(next_token)
             context.append(next_token)
+            token_counts[next_token] += 1
 
             # Avoid infinite loops: if last 3 tokens are identical, stop
             if len(generated) >= 3 and len(set(generated[-3:])) == 1:
@@ -412,11 +562,14 @@ class GenerativePredictor:
 
     def generate_text(self, prompt: str, max_tokens: int = 20,
                       temperature: float = 0.8, top_k: int = 5,
+                      top_p: float = 0.9, repetition_penalty: float = 1.2,
                       rng: Optional[np.random.Generator] = None) -> str:
         """Generate text from a string prompt. Returns full text (prompt + generated)."""
         prompt_tokens = self.tokenize(prompt)
         generated = self.generate(prompt_tokens, max_tokens=max_tokens,
-                                    temperature=temperature, top_k=top_k, rng=rng)
+                                   temperature=temperature, top_k=top_k,
+                                   top_p=top_p, repetition_penalty=repetition_penalty,
+                                   rng=rng)
         all_tokens = prompt_tokens + generated
         return self.detokenize(all_tokens)
 
