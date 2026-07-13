@@ -1,3 +1,58 @@
+---
+license: mit
+language:
+  - en
+  - fr
+library_name: pytorch
+tags:
+  - hyperdimensional-computing
+  - spiking-neural-networks
+  - hdc
+  - snn
+  - lif
+  - stdp
+  - r-stdp
+  - brain-inspired
+  - cognitive-architecture
+  - agentic
+  - cpu-only
+  - no-transformer
+  - no-gpu
+  - non-transformer
+  - sparse-distributed-memory
+  - kanerva
+  - attractor-networks
+  - global-workspace-theory
+  - predictive-coding
+  - neuromodulators
+  - consciousness
+  - kuramoto
+  - vector-symbolic-architecture
+  - vsa
+  - one-shot-learning
+  - instant-learning
+  - pure-python
+  - numpy
+  - scipy
+  - fastapi
+  - web-dashboard
+  - multi-modal
+  - bpe
+  - benchmark
+  - beam-search
+  - attention
+  - reinforcement-learning
+  - n-gram
+  - kneser-ney
+  - generative-ai
+  - text-generation
+  - reasoning
+  - creative-writing
+  - research
+  - prototype
+pipeline_tag: text-generation
+---
+
 # NOVA + SPIKE + AETHER — A Non-Transformer AI Stack
 
 > Four CPU-only, GPU-free, transformer-free AI brains — built from scratch, in pure Python.
