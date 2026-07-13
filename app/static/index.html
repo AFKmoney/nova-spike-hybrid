@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA-SPIKE-HYBRID — AI Brain Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0a0e1a;
+    color: #c8d6e5;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 26px;
+    margin-bottom: 4px;
+  }
+  .subtitle { color: #576574; font-size: 13px; margin-bottom: 20px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 15px;
+    margin-bottom: 15px;
+  }
+  .panel {
+    background: #151b2e;
+    border: 1px solid #2d3548;
+    border-radius: 8px;
+    padding: 15px;
+  }
+  .panel h2 {
+    color: #00d2ff;
+    font-size: 13px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Model cards */
+  .model-card {
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    border-left: 4px solid var(--color);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+  }
+  .model-card.disabled { opacity: 0.4; }
+  .model-card.loaded { box-shadow: 0 0 0 1px var(--color); }
+  .model-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .model-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--color);
+  }
+  .model-desc {
+    font-size: 11px;
+    color: #576574;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .model-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    font-size: 10px;
+    margin-bottom: 8px;
+  }
+  .stat {
+    background: #151b2e;
+    padding: 4px 6px;
+    border-radius: 3px;
+    text-align: center;
+  }
+  .stat-label { color: #576574; font-size: 9px; text-transform: uppercase; }
+  .stat-value { color: #00d2ff; font-weight: 600; font-size: 12px; }
+
+  .model-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .btn {
+    background: #2d3548;
+    color: #c8d6e5;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: #3d4558; transform: translateY(-1px); }
+  .btn.active { background: #00d2ff; color: #0a0e1a; }
+  .btn.danger { background: #ee5a52; color: #fff; }
+  .btn.success { background: #0abde3; color: #0a0e1a; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .status-enabled { background: #0abde3; color: #0a0e1a; }
+  .status-disabled { background: #2d3548; color: #576574; }
+  .status-loaded { background: #00d2ff; color: #0a0e1a; }
+  .status-unloaded { background: #2d3548; color: #576574; }
+
+  /* Chat */
+  .chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .chat-log {
+    flex: 1;
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    border-radius: 4px;
+    padding: 10px;
+    height: 350px;
+    overflow-y: auto;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .chat-entry { margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; }
+  .chat-entry.user { background: #151b2e; border-left: 3px solid #00d2ff; }
+  .chat-entry.ai { background: #151b2e; border-left: 3px solid var(--color, #feca57); }
+  .chat-entry.combined { background: #1a1530; border-left: 3px solid #5f27cd; }
+  .chat-meta {
+    font-size: 10px;
+    color: #576574;
+    margin-bottom: 2px;
+  }
+  .chat-text { color: #c8d6e5; line-height: 1.5; }
+  .chat-text .model-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 4px;
+    background: var(--color);
+    color: #0a0e1a;
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  input[type="text"], select {
+    background: #0a0e1a;
+    border: 1px solid #2d3548;
+    color: #c8d6e5;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+  }
+  input[type="text"]:focus, select:focus { border-color: #00d2ff; }
+  input[type="text"] { flex: 1; }
+  select { min-width: 120px; }
+
+  /* Aggregate metrics */
+  .aggregate {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+  .agg-card {
+    background: #151b2e;
+    border: 1px solid #2d3548;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+  }
+  .agg-label { color: #576574; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .agg-value { color: #00d2ff; font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .agg-value.small { font-size: 14px; }
+
+  /* Latency chart */
+  #latency-chart {
+    background: #0a0e1a;
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+
+  .footer {
+    text-align: center;
+    color: #576574;
+    font-size: 11px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #2d3548;
+  }
+  .loading-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #2d3548;
+    border-top-color: #00d2ff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>NOVA-SPIKE-HYBRID — AI Brain Dashboard</h1>
+<p class="subtitle">Real-time model management · Hot toggle · Combined mode · CPU-only · No transformer · No GPU</p>
+
+<!-- Aggregate metrics -->
+<div class="aggregate" id="aggregate">
+  <div class="agg-card"><div class="agg-label">Models</div><div class="agg-value" id="agg-models">0</div></div>
+  <div class="agg-card"><div class="agg-label">Enabled</div><div class="agg-value" id="agg-enabled">0</div></div>
+  <div class="agg-card"><div class="agg-label">Loaded</div><div class="agg-value" id="agg-loaded">0</div></div>
+  <div class="agg-card"><div class="agg-label">Total Calls</div><div class="agg-value" id="agg-calls">0</div></div>
+  <div class="agg-card"><div class="agg-label">Memory (MB)</div><div class="agg-value" id="agg-memory">0</div></div>
+</div>
+
+<div class="grid">
+  <!-- Left: Models -->
+  <div class="panel">
+    <h2>Models — Hot Toggle</h2>
+    <div id="models-list"></div>
+  </div>
+
+  <!-- Right: Chat -->
+  <div class="panel">
+    <h2>Chat — Try the Models</h2>
+    <div class="chat-container">
+      <div class="chat-log" id="chat-log"></div>
+      <div class="chat-input-row">
+        <select id="model-select">
+          <option value="Generative">Generative</option>
+          <option value="AETHER">AETHER</option>
+          <option value="NOVA">NOVA</option>
+          <option value="SPIKE">SPIKE</option>
+          <option value="HYBRID">HYBRID</option>
+          <option value="combined">⚡ Combined Mode</option>
+        </select>
+        <input type="text" id="chat-input" placeholder="Type a message..." autofocus>
+        <button class="btn success" id="send-btn">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Latency chart -->
+<div class="panel">
+  <h2>Latency History (ms per call)</h2>
+  <canvas id="latency-chart" width="1100" height="120"></canvas>
+</div>
+
+<div class="footer">
+  NOVA-SPIKE-HYBRID · 5 AI brains · CPU-only · No transformer · No GPU · No external LLM
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("chat-log");
+const input = $("chat-input");
+const modelSelect = $("model-select");
+const sendBtn = $("send-btn");
+
+let ws = null;
+let latencyHistory = [];
+const MAX_HISTORY = 60;
+
+// ============================================================
+// WebSocket for real-time metrics
+// ============================================================
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws/metrics`);
+  ws.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    updateModels(data.models);
+    updateAggregate(data.aggregate);
+  };
+  ws.onclose = () => setTimeout(connectWS, 2000);
+  ws.onerror = () => ws.close();
+}
+
+// ============================================================
+// Render models
+// ============================================================
+function updateModels(models) {
+  const container = $("models-list");
+  // Only re-render if structure changed
+  if (container.children.length !== Object.keys(models).length) {
+    container.innerHTML = "";
+    for (const [name, m] of Object.entries(models)) {
+      const card = document.createElement("div");
+      card.className = "model-card";
+      card.id = `model-${name}`;
+      card.style.setProperty("--color", m.color);
+      card.innerHTML = `
+        <div class="model-header">
+          <span class="model-name" style="color:${m.color}">${name}</span>
+          <span>
+            <span class="status-badge ${m.enabled ? "status-enabled" : "status-disabled"}" id="badge-enable-${name}">${m.enabled ? "ON" : "OFF"}</span>
+            <span class="status-badge ${m.loaded ? "status-loaded" : "status-unloaded"}" id="badge-load-${name}">${m.loaded ? "LOADED" : "UNLOADED"}</span>
+          </span>
+        </div>
+        <div class="model-desc">${m.description}</div>
+        <div class="model-stats">
+          <div class="stat"><div class="stat-label">Calls</div><div class="stat-value" id="stat-calls-${name}">${m.n_calls}</div></div>
+          <div class="stat"><div class="stat-label">Avg ms</div><div class="stat-value" id="stat-avg-${name}">${m.avg_time_ms}</div></div>
+          <div class="stat"><div class="stat-label">Last ms</div><div class="stat-value" id="stat-last-${name}">${m.last_time_ms}</div></div>
+          <div class="stat"><div class="stat-label">Load s</div><div class="stat-value" id="stat-load-${name}">${m.load_time_s}</div></div>
+        </div>
+        <div class="model-actions">
+          <button class="btn ${m.enabled ? "active" : ""}" onclick="toggleModel('${name}', ${!m.enabled})">${m.enabled ? "Disable" : "Enable"}</button>
+          <button class="btn ${m.loaded ? "danger" : "success"}" onclick="toggleLoad('${name}', ${!m.loaded})">${m.loaded ? "Unload" : "Load"}</button>
+        </div>
+      `;
+      container.appendChild(card);
+    }
+  } else {
+    // Just update values
+    for (const [name, m] of Object.entries(models)) {
+      const card = $(`model-${name}`);
+      if (!card) continue;
+      card.classList.toggle("disabled", !m.enabled);
+      card.classList.toggle("loaded", m.loaded);
+      const eBadge = $(`badge-enable-${name}`);
+      const lBadge = $(`badge-load-${name}`);
+      if (eBadge) {
+        eBadge.className = `status-badge ${m.enabled ? "status-enabled" : "status-disabled"}`;
+        eBadge.textContent = m.enabled ? "ON" : "OFF";
+      }
+      if (lBadge) {
+        lBadge.className = `status-badge ${m.loaded ? "status-loaded" : "status-unloaded"}`;
+        lBadge.textContent = m.loaded ? "LOADED" : "UNLOADED";
+      }
+      const callsEl = $(`stat-calls-${name}`);
+      const avgEl = $(`stat-avg-${name}`);
+      const lastEl = $(`stat-last-${name}`);
+      if (callsEl) callsEl.textContent = m.n_calls;
+      if (avgEl) avgEl.textContent = m.avg_time_ms;
+      if (lastEl) lastEl.textContent = m.last_time_ms;
+
+      // Update buttons
+      const btns = card.querySelectorAll(".btn");
+      if (btns.length >= 2) {
+        btns[0].className = `btn ${m.enabled ? "active" : ""}`;
+        btns[0].textContent = m.enabled ? "Disable" : "Enable";
+        btns[0].onclick = () => toggleModel(name, !m.enabled);
+        btns[1].className = `btn ${m.loaded ? "danger" : "success"}`;
+        btns[1].textContent = m.loaded ? "Unload" : "Load";
+        btns[1].onclick = () => toggleLoad(name, !m.loaded);
+      }
+    }
+  }
+}
+
+function updateAggregate(agg) {
+  $("agg-models").textContent = agg.n_models;
+  $("agg-enabled").textContent = agg.n_enabled;
+  $("agg-loaded").textContent = agg.n_loaded;
+  $("agg-calls").textContent = agg.total_calls;
+  $("agg-memory").textContent = agg.total_memory_mb;
+}
+
+// ============================================================
+// Toggle handlers
+// ============================================================
+async function toggleModel(name, enable) {
+  const endpoint = enable ? "enable" : "disable";
+  await fetch(`/api/${endpoint}/${name}`, { method: "POST" });
+  // Status will update via WebSocket
+}
+
+async function toggleLoad(name, load) {
+  const endpoint = load ? "load" : "unload";
+  const btn = document.querySelector(`#model-${name} .btn.success, #model-${name} .btn.danger`);
+  if (btn) {
+    const original = btn.textContent;
+    btn.innerHTML = `<span class="loading-spinner"></span>Loading...`;
+    btn.disabled = true;
+  }
+  await fetch(`/api/${endpoint}/${name}`, { method: "POST" });
+  // Status will update via WebSocket
+}
+
+// ============================================================
+// Chat
+// ============================================================
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+  const model = modelSelect.value;
+  input.value = "";
+
+  // Show user message
+  addChatEntry("user", "You", text);
+
+  if (model === "combined") {
+    await sendCombined(text);
+  } else {
+    await sendSingle(text, model);
+  }
+}
+
+async function sendSingle(text, model) {
+  addChatEntry("ai", model, `<span class="loading-spinner"></span>Thinking...`, model);
+  try {
+    const r = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ message: text, model: model }),
+    });
+    const data = await r.json();
+    // Remove the "Thinking..." entry
+    const entries = log.querySelectorAll(".chat-entry.ai");
+    if (entries.length > 0) entries[entries.length - 1].remove();
+
+    if (data.error) {
+      addChatEntry("ai", model, `⚠️ ${data.error}`, model);
+    } else {
+      const color = getModelColor(model);
+      addChatEntry("ai", model, data.response, model);
+      // Track latency
+      latencyHistory.push({ model, ms: data.time_ms, color });
+      if (latencyHistory.length > MAX_HISTORY) latencyHistory.shift();
+      drawLatencyChart();
+    }
+  } catch (e) {
+    addChatEntry("ai", model, `⚠️ Error: ${e}`, model);
+  }
+}
+
+async function sendCombined(text) {
+  addChatEntry("combined", "Combined", `<span class="loading-spinner"></span>Querying all enabled models...`, "#5f27cd");
+  try {
+    const r = await fetch("/api/chat_combined", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await r.json();
+    // Remove "Querying..."
+    const entries = log.querySelectorAll(".chat-entry.combined");
+    if (entries.length > 0) entries[entries.length - 1].remove();
+
+    if (data.n_models === 0) {
+      addChatEntry("combined", "Combined", "⚠️ No models enabled. Enable at least one model.", "#5f27cd");
+      return;
+    }
+
+    // Show primary response
+    let html = `<div style="margin-bottom:8px;font-size:11px;color:#576574;">Primary: ${data.primary} (${data.n_models} models queried in ${data.total_ms.toFixed(0)}ms)</div>`;
+    for (const [name, result] of Object.entries(data.responses)) {
+      const color = getModelColor(name);
+      const resp = result.response || `⚠️ ${result.error}`;
+      const time = result.time_ms.toFixed(0);
+      html += `<div style="margin-bottom:6px"><span class="model-tag" style="background:${color}">${name}</span> <span style="color:#576574;font-size:10px">${time}ms</span><br><span style="margin-left:4px">${resp}</span></div>`;
+    }
+    addChatEntry("combined", "Combined", html, "#5f27cd");
+  } catch (e) {
+    addChatEntry("combined", "Combined", `⚠️ Error: ${e}`, "#5f27cd");
+  }
+}
+
+function addChatEntry(type, name, text, color) {
+  const entry = document.createElement("div");
+  entry.className = `chat-entry ${type}`;
+  if (color) entry.style.setProperty("--color", color);
+  const time = new Date().toLocaleTimeString();
+  entry.innerHTML = `<div class="chat-meta">[${time}] ${name}</div><div class="chat-text">${text}</div>`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function getModelColor(name) {
+  const colors = {
+    "Generative": "#00d2ff",
+    "AETHER": "#5f27cd",
+    "NOVA": "#feca57",
+    "SPIKE": "#ff6b6b",
+    "HYBRID": "#54a0ff",
+  };
+  return colors[name] || "#00d2ff";
+}
+
+// ============================================================
+// Latency chart
+// ============================================================
+const canvas = $("latency-chart");
+const ctx = canvas.getContext("2d");
+
+function drawLatencyChart() {
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.fillStyle = "#0a0e1a";
+  ctx.fillRect(0, 0, W, H);
+
+  if (latencyHistory.length === 0) {
+    ctx.fillStyle = "#576574";
+    ctx.font = "12px monospace";
+    ctx.fillText("No calls yet. Send a message to see latency.", 10, 60);
+    return;
+  }
+
+  const maxMs = Math.max(...latencyHistory.map(h => h.ms), 100);
+  const barW = W / MAX_HISTORY;
+
+  // Grid lines
+  ctx.strokeStyle = "#2d3548";
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = (i / 4) * H;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+
+  // Bars
+  for (let i = 0; i < latencyHistory.length; i++) {
+    const h = latencyHistory[i];
+    const x = i * barW;
+    const barH = (h.ms / maxMs) * (H - 10);
+    ctx.fillStyle = h.color;
+    ctx.fillRect(x, H - barH, barW - 1, barH);
+  }
+
+  // Max label
+  ctx.fillStyle = "#576574";
+  ctx.font = "10px monospace";
+  ctx.fillText(`max: ${maxMs.toFixed(0)}ms`, 5, 12);
+  ctx.fillText(`calls: ${latencyHistory.length}`, 5, H - 4);
+}
+
+// ============================================================
+// Init
+// ============================================================
+sendBtn.onclick = sendMessage;
+input.onkeydown = (e) => { if (e.key === "Enter") sendMessage(); };
+connectWS();
+drawLatencyChart();
+
+// Welcome message
+addChatEntry("ai", "Generative", "Welcome! I'm the GenerativeBrain. Enable models on the left, then ask me anything. Try Combined Mode for multi-brain responses.", "#00d2ff");
+</script>
+</body>
+</html>
