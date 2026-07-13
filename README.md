@@ -378,7 +378,7 @@ A FastAPI + WebSocket server streams spikes in real time to a Canvas-based dashb
 
 ```bash
 python web/server.py
-# → http://localhost:8000
+# → http://localhost:4141
 ```
 
 Features:
