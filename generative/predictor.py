@@ -574,6 +574,238 @@ class GenerativePredictor:
         return self.detokenize(all_tokens)
 
     # ---------------------------------------------------------------- #
+    # Beam search — keep N best sequences
+    # ---------------------------------------------------------------- #
+    def beam_search(self, prompt_tokens: list[str], max_tokens: int = 20,
+                    beam_width: int = 5, length_penalty: float = 0.6,
+                    stop_tokens: Optional[set] = None) -> list[tuple[list[str], float]]:
+        """
+        Beam search: keep the top-beam_width sequences at each step.
+
+        Args:
+            prompt_tokens: starting tokens
+            max_tokens: max tokens to generate
+            beam_width: number of beams to keep
+            length_penalty: 0=no penalty, 1=normalize by length, 0.6=typical
+            stop_tokens: tokens that end a beam
+
+        Returns:
+            list of (tokens, log_prob) sorted by score (best first)
+        """
+        if stop_tokens is None:
+            stop_tokens = {"</s>", "<s>", "<pad>", "<unk>"}
+
+        # Each beam: (tokens, log_prob, finished)
+        beams = [(list(prompt_tokens), 0.0, False)]
+        finished_beams = []
+
+        for step in range(max_tokens):
+            # If all beams finished, stop
+            if all(b[2] for b in beams):
+                break
+
+            # Expand each beam
+            candidates = []
+            for tokens, log_prob, finished in beams:
+                if finished:
+                    candidates.append((tokens, log_prob, True))
+                    continue
+
+                # Get top-k next tokens
+                context = tokens[-10:] if len(tokens) > 10 else tokens  # last 10 for context
+                dist = self.predict_distribution(context, top_k=beam_width)
+                if not dist:
+                    # No continuation — finish this beam
+                    candidates.append((tokens, log_prob, True))
+                    continue
+
+                for token, prob in dist:
+                    if token in stop_tokens:
+                        candidates.append((tokens + [token], log_prob, True))
+                    else:
+                        # log prob (clamp to avoid -inf)
+                        p = max(prob, 1e-10)
+                        candidates.append((tokens + [token], log_prob + math.log(p), False))
+
+            # Sort by score (with length penalty)
+            def score(beam):
+                tokens, log_prob, finished = beam
+                # Length = number of generated tokens (excluding prompt)
+                gen_len = len(tokens) - len(prompt_tokens)
+                if gen_len == 0:
+                    return log_prob
+                # Normalize by length^penalty
+                return log_prob / (gen_len ** length_penalty)
+
+            candidates.sort(key=score, reverse=True)
+
+            # Keep top beam_width
+            beams = candidates[:beam_width]
+
+            # Move finished beams aside
+            finished = [b for b in beams if b[2]]
+            beams = [b for b in beams if not b[2]]
+            finished_beams.extend(finished)
+
+            if not beams:
+                break
+
+        # Combine finished + unfinished beams
+        all_beams = finished_beams + beams
+        # Strip prompt tokens from each beam
+        results = []
+        for tokens, log_prob, finished in all_beams:
+            generated = tokens[len(prompt_tokens):]
+            # Remove stop tokens from generated
+            generated = [t for t in generated if t not in stop_tokens]
+            results.append((generated, log_prob))
+
+        # Sort by score
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
+
+    def beam_search_text(self, prompt: str, max_tokens: int = 20,
+                          beam_width: int = 5) -> str:
+        """Beam search from a string prompt. Returns the best sequence."""
+        prompt_tokens = self.tokenize(prompt)
+        results = self.beam_search(prompt_tokens, max_tokens=max_tokens,
+                                     beam_width=beam_width)
+        if not results:
+            return prompt
+        best_tokens, _ = results[0]
+        all_tokens = prompt_tokens + best_tokens
+        return self.detokenize(all_tokens)
+
+    # ---------------------------------------------------------------- #
+    # Local attention — weight recent context tokens more heavily
+    # ---------------------------------------------------------------- #
+    def predict_with_attention(self, context: list[str], top_k: int = 10,
+                                attention_decay: float = 0.85) -> list[tuple[str, float]]:
+        """
+        Predict next token with local attention — recent tokens weighted more.
+
+        Instead of using only the last N tokens equally, this method:
+          1. For each order n, weights the context by recency
+          2. Aggregates predictions across orders weighted by attention
+
+        Args:
+            context: token context
+            top_k: top-k candidates
+            attention_decay: decay factor (0.85 = each older token has 85% weight)
+
+        Returns:
+            list of (token, weighted_probability)
+        """
+        if not context:
+            context = ["<s>"]
+
+        # Aggregate predictions from multiple orders with attention weighting
+        token_scores = defaultdict(float)
+        max_len = min(len(context), 10)
+
+        for n in self.orders:
+            if n < 2 or len(context) < n - 1:
+                continue
+
+            # Weight for this order: higher orders get more weight if context is long
+            order_weight = min(n / 7.0, 1.0)
+
+            # Get context for this order (last n-1 tokens)
+            ctx = tuple(context[-(n - 1):])
+            ngrams_with_ctx = {ng: c for ng, c in self.ngram_counts[n].items()
+                                if ng[:-1] == ctx}
+            if not ngrams_with_ctx:
+                continue
+
+            ctx_total = self.context_counts[n].get(ctx, 0)
+            if ctx_total == 0:
+                continue
+
+            # Add weighted probabilities
+            for ng, c in ngrams_with_ctx.items():
+                token = ng[-1]
+                if token in ("<s>", "</s>", "<pad>", "<unk>"):
+                    continue
+                prob = c / ctx_total
+                # Apply attention weight: decay older context
+                attention_weight = attention_decay ** (max_len - (n - 1))
+                token_scores[token] += prob * order_weight * attention_weight
+
+        # If no scores, fall back to unigram
+        if not token_scores and self.total_unigrams > 0:
+            for tok, cnt in self.unigram_counts.items():
+                if tok in ("<s>", "</s>", "<pad>", "<unk>"):
+                    continue
+                token_scores[tok] = cnt / self.total_unigrams
+
+        # Sort and return top-k
+        dist = sorted(token_scores.items(), key=lambda x: -x[1])
+        # Normalize
+        total = sum(s for _, s in dist)
+        if total > 0:
+            dist = [(t, s / total) for t, s in dist]
+        return dist[:top_k]
+
+    def generate_with_attention(self, prompt_tokens: list[str],
+                                 max_tokens: int = 20,
+                                 temperature: float = 0.7,
+                                 top_k: int = 5,
+                                 attention_decay: float = 0.85,
+                                 repetition_penalty: float = 1.2,
+                                 stop_tokens: Optional[set] = None,
+                                 rng: Optional[np.random.Generator] = None) -> list[str]:
+        """Generate using local attention instead of pure n-gram backoff."""
+        if rng is None:
+            rng = np.random.default_rng()
+        if stop_tokens is None:
+            stop_tokens = {"</s>", "<s>", "<pad>", "<unk>"}
+
+        context = list(prompt_tokens)
+        generated = []
+        token_counts = Counter()
+
+        for _ in range(max_tokens):
+            dist = self.predict_with_attention(context, top_k=max(top_k, 10),
+                                                 attention_decay=attention_decay)
+            if not dist:
+                break
+
+            # Repetition penalty
+            if repetition_penalty != 1.0:
+                penalized = []
+                for tok, prob in dist:
+                    if token_counts.get(tok, 0) > 0:
+                        prob = prob / (repetition_penalty ** token_counts[tok])
+                    penalized.append((tok, prob))
+                dist = penalized
+                dist.sort(key=lambda x: -x[1])
+
+            candidates = dist[:top_k]
+
+            if temperature <= 0.01:
+                next_token = candidates[0][0]
+            else:
+                probs = np.array([p for _, p in candidates], dtype=np.float64)
+                scaled = np.log(np.maximum(probs, 1e-10)) / temperature
+                scaled = scaled - scaled.max()
+                exp = np.exp(scaled)
+                sample_probs = exp / exp.sum()
+                idx = rng.choice(len(candidates), p=sample_probs)
+                next_token = candidates[idx][0]
+
+            if next_token in stop_tokens:
+                break
+
+            generated.append(next_token)
+            context.append(next_token)
+            token_counts[next_token] += 1
+
+            if len(generated) >= 3 and len(set(generated[-3:])) == 1:
+                break
+
+        return generated
+
+    # ---------------------------------------------------------------- #
     # Stats
     # ---------------------------------------------------------------- #
     def stats(self) -> dict:
