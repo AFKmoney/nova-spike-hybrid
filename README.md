@@ -19,8 +19,11 @@ This repo is a from-scratch exploration of **four alternative AI paradigms** —
 | **SPIKE** | Spiking Neural Network (LIF + STDP) | CSR sparse synapses | One-shot imprint + STDP + R-STDP | ~20 ms | **0.45 MB** |
 | **AETHER** | HDC + cognitive loop + brain modules | SDM + KB triples + episodic | One-shot teach + attractor | ~300 ms | ~30 MB |
 | **HYBRID** | NOVA + SPIKE | Both | Double-write | ~80 ms | ~58 MB |
+| **Generative** | AETHER + pre-trained corpus | SDM + HD n-gram LM | One-shot + corpus pre-train | ~300 ms | ~30 MB |
 
-All four are auto-contained (no API), run on a single CPU core, and learn new facts in under 1 ms per fact (300 ms for AETHER's full cognitive loop).
+All five are auto-contained (no API), run on a single CPU core, and learn new facts in under 1 ms per fact (300 ms for AETHER/Generative's full cognitive loop).
+
+**Generative** is the closest to an LLM: it reasons, generates text token-by-token, writes stories and poems, summarizes, explains — all without a transformer.
 
 ---
 
@@ -425,6 +428,72 @@ from distributed import DistributedBrain
 dist = DistributedBrain()
 print(dist.chat("calcule 2+2"))
 ```
+
+### Generative AI mode — the real LLM-like experience
+
+For the first time in this stack, the **GenerativeBrain** wraps AETHER with a pre-training corpus and exposes a unified API for reasoning, generation, creative writing, and analysis — all without a transformer.
+
+```bash
+# Interactive CLI
+python generative_cli.py
+```
+
+```python
+from generative import GenerativeBrain, GenerativeConfig
+
+# Initialize + pre-train on built-in corpus (76 sentences, ~42s)
+brain = GenerativeBrain(GenerativeConfig(verbose=True))
+
+# Reasoning (cognitive loop, multi-cycle)
+print(brain.reason("What is the capital of France?"))
+# It's Paris.
+
+# Free-form generation (token-by-token with temperature)
+print(brain.generate("The cat", max_tokens=20))
+# is the capital of the earth is about 2 million people...
+
+# Creative writing
+print(brain.write_story("a lonely robot"))
+# Once upon a time, there was The who lived in an ancient temple...
+
+print(brain.write_poem("the ocean"))
+# Roses are red,
+# Violets are green,
+# the ocean is fair,
+# And so are you.
+
+# Analysis
+print(brain.summarize("The cat sleeps all day and hunts at night."))
+print(brain.explain("the brain"))
+
+# One-shot teaching (instant learning)
+brain.teach("Tokyo is the capital of Japan")
+print(brain.reason("What is the capital of Japan?"))
+# The capital of japan is Tokyo.
+
+# Natural chat (auto-routes to the right mode)
+print(brain.chat("Tell me about Python"))
+# Here's what I know about python:
+#   - It is a programming language.
+#   - It is a high-level programming language.
+#   - It is a widely used in.
+```
+
+**CLI commands:**
+```
+/reason <question>     Reason about a question
+/gen <prompt>          Generate text token-by-token
+/story [theme]         Write a short story
+/poem <topic>          Write a poem
+/essay <topic>         Write an essay
+/summarize <text>      Summarize text
+/explain <topic>       Explain a topic
+/teach <fact>          Teach a fact
+/train <text>          Train on a text block
+/stats                 Show brain statistics
+```
+
+The brain starts with a 76-sentence built-in corpus (cats, dogs, Paris, water, Einstein, Earth, computers, Python, the brain, math, music, literature, science, history, ocean, trees, the heart, dreams). You can extend it with `brain.train_on_text(your_text)` or `brain.train_on_file("corpus.txt")`.
 
 ### Web dashboard
 
