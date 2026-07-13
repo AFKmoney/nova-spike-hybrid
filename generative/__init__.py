@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aether import AETHER
 from generative.corpus import get_full_corpus, get_corpus_sentences, get_corpus_stats
+from generative.predictor import GenerativePredictor
 
 
 # ---------------------------------------------------------------------- #
@@ -74,71 +75,69 @@ class GenerativeBrain:
         self.cfg = cfg or GenerativeConfig()
         self.rng = rng or np.random.default_rng(42)
 
-        print("Initializing GenerativeBrain (AETHER core)...")
+        print("Initializing GenerativeBrain (AETHER core + fast predictor)...")
         t0 = time.time()
-        self.aether = AETHER()
 
-        # BPE tokenizer (optionnel)
-        self.bpe = None
-        if self.cfg.use_bpe:
-            print("Training BPE tokenizer on corpus...")
-            try:
-                from aether.bpe import BPETokenizer
-                self.bpe = BPETokenizer(vocab_size=self.cfg.bpe_vocab_size)
-                self.bpe.train(DEFAULT_CORPUS, verbose=False)
-                if self.cfg.verbose:
-                    print(f"  BPE trained: {len(self.bpe.vocab)} tokens")
-            except Exception as e:
-                print(f"  BPE training failed ({e}), falling back to word tokenizer")
-                self.bpe = None
+        # 1. Fast predictor (n-gram 1-7 + BPE) — for generation
+        print("Building fast n-gram predictor (orders 1-7, BPE)...")
+        self.predictor = GenerativePredictor(
+            orders=(1, 2, 3, 4, 5, 6, 7),
+            use_bpe=self.cfg.use_bpe,
+            bpe_vocab_size=self.cfg.bpe_vocab_size,
+        )
 
         if self.cfg.pretrained:
             stats = get_corpus_stats()
-            print(f"Pre-training on large corpus "
+            print(f"Pre-training predictor on large corpus "
                   f"({stats['n_sentences']} sentences, {stats['n_words']} words, "
                   f"{stats['n_domains']} domains)...")
-            self._pretrain()
-        print(f"Ready in {time.time()-t0:.1f}s "
-              f"(vocab={len(self.aether.assoc.vocab)}, "
-              f"episodes={len(self.aether.assoc.episodes)}, "
-              f"bpe={'on' if self.bpe else 'off'})\n")
+            self._pretrain_fast()
 
-    # ---------------------------------------------------------------- #
-    def _pretrain(self) -> None:
-        """Pré-entraîne sur le corpus par défaut."""
-        sentences = get_corpus_sentences()
-        max_pretrain = self.cfg.max_pretrain_sentences
-        selected = sentences[:max_pretrain]
+        # 2. AETHER (for reasoning — slow, lazy-init)
+        self.aether = None
         if self.cfg.verbose:
-            print(f"  Pre-training on {len(selected)}/{len(sentences)} sentences")
-        n = 0
-        for sent in selected:
-            sent = sent.strip()
-            if len(sent) < 5:
-                continue
-            self.aether.teach(sent, silent=True)
-            try:
-                self.aether.ngram_predictor.train_text(sent)
-            except Exception:
-                pass
-            n += 1
+            print("AETHER will be initialized lazily on first reasoning request.")
+
+        pstats = self.predictor.stats()
+        print(f"Ready in {time.time()-t0:.1f}s "
+              f"(predictor vocab={pstats['vocab_size']}, "
+              f"unigrams={pstats['total_unigrams']}, "
+              f"bpe={'on' if pstats['use_bpe'] else 'off'})\n")
+
+    def _ensure_aether(self):
+        """Lazily initialize AETHER (only needed for reasoning)."""
+        if self.aether is None:
+            print("Initializing AETHER (first reasoning request)...")
+            t0 = time.time()
+            self.aether = AETHER()
+            # Quick teach a few key facts so reasoning works
+            key_facts = [
+                "Paris is the capital of France",
+                "Tokyo is the capital of Japan",
+                "London is the capital of the United Kingdom",
+                "Water is a chemical compound",
+                "Einstein was a physicist",
+            ]
+            for fact in key_facts:
+                self.aether.teach(fact, silent=True)
+            print(f"  AETHER ready in {time.time()-t0:.1f}s")
+
+    def _pretrain_fast(self) -> None:
+        """Pre-train the fast predictor on the entire corpus (seconds, not minutes)."""
+        corpus = get_full_corpus()
+        stats = self.predictor.train_corpus(corpus)
         if self.cfg.verbose:
-            print(f"  Learned {n} sentences from corpus")
-            print(f"  N-gram predictor: {self.aether.ngram_predictor.total_unigrams} unigrams, "
-                  f"{len(self.aether.ngram_predictor.bigram_counts)} bigrams, "
-                  f"{len(self.aether.ngram_predictor.trigram_counts)} trigrams")
+            pstats = self.predictor.stats()
+            print(f"  Predictor trained: {pstats}")
+            print(f"  N-gram counts: {pstats['ngram_counts']}")
 
     def train_on_text(self, text: str) -> dict:
         """Entraîne sur un texte personnalisé (one-shot)."""
-        sentences = re.split(r"[.!?]\s+", text)
-        n = 0
-        for sent in sentences:
-            sent = sent.strip()
-            if len(sent) < 5:
-                continue
-            self.aether.teach(sent, silent=True)
-            n += 1
-        return {"sentences_learned": n, "total_episodes": len(self.aether.assoc.episodes)}
+        self.predictor.train_text(text)
+        return {
+            "sentences_learned": len(re.split(r"[.!?]\s+", text)),
+            "predictor_stats": self.predictor.stats(),
+        }
 
     def train_on_file(self, path: str) -> dict:
         """Entraîne sur le contenu d'un fichier texte."""
@@ -147,32 +146,43 @@ class GenerativeBrain:
         return self.train_on_text(text)
 
     # ---------------------------------------------------------------- #
-    # Génération libre
+    # Génération libre — utilise le fast predictor (BPE + 7-gram)
     # ---------------------------------------------------------------- #
     def generate(self, prompt: str, max_tokens: int | None = None,
                  temperature: float | None = None,
                  top_k: int | None = None) -> str:
-        """Génère une continuation du prompt token-par-token."""
+        """
+        Génère une continuation du prompt token-par-token.
+        Utilise le GenerativePredictor (BPE + n-gram 1-7 + backoff + température).
+        """
         max_t = max_tokens or self.cfg.max_tokens
-        # Utilise generate_ngram d'AETHER qui fait la prédiction token-par-token
-        return self.aether.generate_ngram(prompt, max_tokens=max_t)
+        temp = temperature if temperature is not None else self.cfg.temperature
+        k = top_k or self.cfg.top_k
+        return self.predictor.generate_text(
+            prompt, max_tokens=max_t, temperature=temp, top_k=k, rng=self.rng
+        )
 
     def generate_full(self, prompt: str, max_sentences: int = 3) -> str:
         """Génère une réponse multi-phrases fluide."""
-        try:
-            return self.aether.generate_fluent(prompt, max_sentences=max_sentences)
-        except Exception:
-            return self.generate(prompt, max_tokens=30)
+        # Generate longer text by concatenating multiple sentences
+        result = self.generate(prompt, max_tokens=40, temperature=0.8)
+        # Try to add a second sentence
+        if max_sentences > 1 and not result.endswith((".", "!", "?")):
+            extra = self.generate(result[-30:], max_tokens=20, temperature=0.9)
+            result = result + " " + extra
+        return result
 
     # ---------------------------------------------------------------- #
     # Raisonnement
     # ---------------------------------------------------------------- #
     def reason(self, question: str, max_cycles: int = 8) -> str:
-        """Raisonne via le cognitive loop d'AETHER."""
+        """Raisonne via le cognitive loop d'AETHER (lazy init)."""
+        self._ensure_aether()
         return self.aether.ask(question, explain=False)
 
     def reason_with_trace(self, question: str) -> dict:
         """Raisonne et retourne aussi la trace cognitive."""
+        self._ensure_aether()
         answer = self.aether.ask(question, explain=True)
         trace = self.aether.explain_last() if hasattr(self.aether, "explain_last") else ""
         return {
@@ -185,62 +195,62 @@ class GenerativeBrain:
     # Apprentissage
     # ---------------------------------------------------------------- #
     def teach(self, fact: str) -> str:
-        """Apprend un fait instantanément."""
-        return self.aether.teach(fact, silent=True)
+        """Apprend un fait instantanément (predictor + AETHER si dispo)."""
+        # Always train the predictor (fast)
+        self.predictor.train_text(fact)
+        # Also teach AETHER if initialized
+        if self.aether is not None:
+            self.aether.teach(fact, silent=True)
+        return fact
 
     def learn(self, key: str, value: str) -> str:
         """Apprend une paire clé-valeur."""
         fact = f"{key} is {value}"
-        return self.aether.teach(fact, silent=True)
+        return self.teach(fact)
 
     # ---------------------------------------------------------------- #
     # Écriture créative
     # ---------------------------------------------------------------- #
     def write_story(self, theme: str | None = None) -> dict:
-        try:
-            result = self.aether.write_story(theme)
-            if isinstance(result, dict):
-                return result
-            return {"text": str(result), "theme": theme}
-        except Exception as e:
-            return {"text": f"Story error: {e}", "theme": theme}
+        """Génère une courte histoire sur un thème."""
+        # Use the fast predictor for story generation
+        prompt = f"Once upon a time there was {theme}" if theme else "Once upon a time"
+        text = self.generate(prompt, max_tokens=50, temperature=0.9)
+        return {"text": text, "theme": theme, "method": "predictor"}
 
     def write_poem(self, topic: str) -> dict:
-        try:
-            result = self.aether.write_poem(topic)
-            if isinstance(result, dict):
-                return result
-            return {"text": str(result), "topic": topic}
-        except Exception as e:
-            return {"text": f"Poem error: {e}", "topic": topic}
+        """Génère un poème sur un sujet."""
+        # Poems are hard for n-gram; use a template + generation
+        lines = []
+        for template in [f"Roses are red", f"Violets are blue", f"{topic} is true", f"And so are you"]:
+            line = self.generate(template, max_tokens=5, temperature=0.8)
+            lines.append(line.split(".")[-1].strip() if "." in line else line)
+        return {"text": "\n".join(lines), "topic": topic, "method": "template+predictor"}
 
     def write_essay(self, topic: str) -> dict:
-        try:
-            result = self.aether.write_essay(topic)
-            if isinstance(result, dict):
-                return result
-            return {"text": str(result), "topic": topic}
-        except Exception as e:
-            return {"text": f"Essay error: {e}", "topic": topic}
+        """Génère un court essai sur un sujet."""
+        prompt = f"An essay about {topic}"
+        text = self.generate(prompt, max_tokens=60, temperature=0.7)
+        return {"text": text, "topic": topic, "method": "predictor"}
 
     def write_description(self, subject: str) -> dict:
-        try:
-            result = self.aether.write_description(subject)
-            if isinstance(result, dict):
-                return result
-            return {"text": str(result), "subject": subject}
-        except Exception as e:
-            return {"text": f"Description error: {e}", "subject": subject}
+        """Génère une description d'un sujet."""
+        prompt = f"The {subject} is"
+        text = self.generate(prompt, max_tokens=30, temperature=0.7)
+        return {"text": text, "subject": subject, "method": "predictor"}
 
     # ---------------------------------------------------------------- #
     # Analyse
     # ---------------------------------------------------------------- #
     def summarize(self, text: str) -> str:
-        self.aether.teach(text, silent=True)
-        return self.aether.ask(f"Summarize: {text[:100]}")
+        """Résume un texte — utilise le predictor (rapide)."""
+        self.teach(text)
+        # Generate a summary by completing "The summary is"
+        return self.generate(f"The main point is", max_tokens=15, temperature=0.6)
 
     def explain(self, topic: str) -> str:
-        return self.aether.ask(f"Explain {topic}")
+        """Explique un sujet — utilise le predictor (rapide)."""
+        return self.generate(f"The {topic}", max_tokens=25, temperature=0.6)
 
     def analyze(self, text: str) -> dict:
         summary = self.summarize(text)
@@ -294,16 +304,28 @@ class GenerativeBrain:
 
         # Outil
         if "calc" in user_lower or (any(c in user_input for c in "+-*/") and any(c.isdigit() for c in user_input)):
+            self._ensure_aether()
             return self.aether.ask(user_input)
 
-        # Par défaut
-        return self.aether.ask(user_input)
+        # Par défaut: si "tell me about X" → génération depuis le predictor
+        if any(p in user_lower for p in ["tell me about", "what is", "what are", "who is", "who are"]):
+            # Extract topic and generate
+            topic = re.sub(r"(tell me about|what is|what are|who is|who are)\s*:?\s*", "", user_input, flags=re.IGNORECASE).strip().rstrip("?")
+            text = self.generate(f"The {topic}", max_tokens=25, temperature=0.6)
+            return text
+
+        # Sinon: génération simple
+        return self.generate(user_input, max_tokens=25, temperature=0.7)
 
     # ---------------------------------------------------------------- #
     def stats(self) -> dict:
-        s = self.aether.stats() if hasattr(self.aether, "stats") else {}
+        s = {}
+        if self.aether is not None and hasattr(self.aether, "stats"):
+            s = self.aether.stats()
         s["generative"] = True
         s["pretrained"] = self.cfg.pretrained
+        s["predictor"] = self.predictor.stats()
+        s["aether_initialized"] = self.aether is not None
         return s
 
     def print_stats(self) -> None:
