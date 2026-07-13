@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Benchmark v2 — compare SPIKE, NOVA, AETHER, HYBRID sur des tâches agentiques.
+Benchmark v2 — compare SPIKE, NOVA, AETHER, HYBRID on agentic tasks.
 
-Tâches:
+Tasks:
   1. Arithmetic (5 questions)
-  2. Memory recall (apprentissage + rappel)
+  2. Memory recall (teach + query)
   3. Tool calling (calculator, python, time)
-  4. Robustesse au bruit (paraphrases)
+  4. Robustness (paraphrases)
 
-Métriques:
-  - Latence (ms)
-  - Précision (%)
-  - Mémoire (Mo)
+Metrics:
+  - Latency (ms)
+  - Accuracy (%)
+  - Memory (MB)
 """
 
 import sys
@@ -42,7 +42,7 @@ def measure(fn, *args, **kwargs):
 
 
 def estimate_memory(brain) -> float:
-    """Estime l'empreinte mémoire en Mo."""
+    """Estimates memory footprint in MB."""
     if hasattr(brain, "ask"):
         # AETHER
         s = 0
@@ -101,7 +101,7 @@ def estimate_memory(brain) -> float:
 # ---------------------------------------------------------------- #
 
 def task_arithmetic(brain, brain_name) -> dict:
-    """Tâche: 5 questions arithmétiques."""
+    """Task: 5 arithmetic questions."""
     if brain_name == "AETHER":
         questions = [
             ("calc 2+2", "4"),
@@ -139,7 +139,7 @@ def task_arithmetic(brain, brain_name) -> dict:
 
 
 def task_memory(brain, brain_name) -> dict:
-    """Tâche: apprentissage + rappel."""
+    """Task: teaching + recall."""
     if brain_name == "AETHER":
         # AETHER: format "X is the capital of Y"
         facts = [
@@ -204,7 +204,7 @@ def task_memory(brain, brain_name) -> dict:
 
 
 def task_tool_calling(brain, brain_name) -> dict:
-    """Tâche: appel d'outils variés."""
+    """Task: various tool calls."""
     if brain_name == "AETHER":
         tests = [
             ("calc 5+5", "calc"),
@@ -236,7 +236,7 @@ def task_tool_calling(brain, brain_name) -> dict:
 
 
 def task_robustness(brain, brain_name) -> dict:
-    """Tâche: robustesse aux variations de phrasing."""
+    """Task: robustness to phrasing variations."""
     if brain_name == "AETHER":
         brain.teach("The cat is an animal")
         queries = [
@@ -283,12 +283,12 @@ def task_robustness(brain, brain_name) -> dict:
 def main():
     banner("BENCHMARK v2 — SPIKE vs NOVA vs AETHER vs HYBRID", char="#")
     print("""
-Compare 4 cerveaux sur 4 tâches agentiques.
-Métriques: précision, latence, mémoire.
+Compare 4 brains on 4 agentic tasks.
+Metrics: accuracy, latency, memory.
 """)
 
     # Init
-    print("Initialisation...")
+    print("Initializing...")
     t0 = time.time()
     spike = SpikeBrain(SpikeConfig(
         n_sensory=300, n_associative=800, n_motor=300, sim_ticks=25,
@@ -299,7 +299,7 @@ Métriques: précision, latence, mémoire.
         spike=SpikeConfig(n_sensory=300, n_associative=800, n_motor=300, sim_ticks=25),
         nova=NovaConfig(D=2000, sdm_locations=5000),
     ))
-    print(f"Prêt en {time.time()-t0:.2f}s\n")
+    print(f"Ready in {time.time()-t0:.2f}s\n")
 
     brains = {
         "SPIKE": (spike, "SPIKE"),
@@ -330,9 +330,9 @@ Métriques: précision, latence, mémoire.
         elif hasattr(brain, "spike"):
             brain.spike.net.reset()
 
-    # Tableau récapitulatif
-    banner("RÉSULTATS")
-    print(f"\n{'Métrique':<30} {'SPIKE':<14} {'NOVA':<14} {'AETHER':<14} {'HYBRID':<14}")
+    # Summary table
+    banner("RESULTS")
+    print(f"\n{'Metric':<30} {'SPIKE':<14} {'NOVA':<14} {'AETHER':<14} {'HYBRID':<14}")
     print("-" * 86)
     for task_name in ["arithmetic", "memory", "tool_calling", "robustness"]:
         print(f"\n{task_name.upper()}:")
@@ -348,19 +348,19 @@ Métriques: précision, latence, mémoire.
                     row += f" {val*100:<13.1f}"
             print(row + ("%" if "accuracy" in metric else " ms"))
 
-    print(f"\nMÉMOIRE (Mo):")
+    print(f"\nMEMORY (MB):")
     row = f"  {'RAM':<28}"
     for brain_name in ["SPIKE", "NOVA", "AETHER", "HYBRID"]:
         row += f" {results[brain_name]['memory_mb']:<13.2f}"
     print(row)
 
-    # Sauvegarde JSON
+    # Save JSON
     output_path = "/home/z/my-project/download/benchmark_results_v2.json"
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"\n✓ Résultats sauvés dans {output_path}")
+    print(f"\n✓ Results saved to {output_path}")
 
-    # Graphique
+    # Chart
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -373,7 +373,7 @@ Métriques: précision, latence, mémoire.
         brain_names = ["SPIKE", "NOVA", "AETHER", "HYBRID"]
         colors = ["#00d2ff", "#feca57", "#5f27cd", "#ff6b6b"]
 
-        # Accuracy par tâche
+        # Accuracy per task
         tasks = ["arithmetic", "memory", "tool_calling", "robustness"]
         ax = axes[0, 0]
         x = np.arange(len(tasks))
@@ -383,8 +383,8 @@ Métriques: précision, latence, mémoire.
             ax.bar(x + i * w, accs, w, label=name, color=colors[i])
         ax.set_xticks(x + 1.5 * w)
         ax.set_xticklabels(tasks, rotation=15)
-        ax.set_ylabel("Précision (%)")
-        ax.set_title("Précision par tâche")
+        ax.set_ylabel("Accuracy (%)")
+        ax.set_title("Accuracy per task")
         ax.legend()
         ax.grid(True, alpha=0.2, axis='y')
         ax.set_ylim(0, 110)
@@ -400,18 +400,18 @@ Métriques: précision, latence, mémoire.
                 times.append(tm if tm else 0)
             ax.plot(tasks, times, marker="o", label=name,
                     color=colors[i], linewidth=2)
-        ax.set_ylabel("Latence (ms)")
-        ax.set_title("Latence moyenne par tâche (log scale)")
+        ax.set_ylabel("Latency (ms)")
+        ax.set_title("Mean latency per task (log scale)")
         ax.set_yscale("log")
         ax.legend()
         ax.grid(True, alpha=0.2)
 
-        # Mémoire
+        # Memory
         ax = axes[1, 0]
         mems = [results[name]["memory_mb"] for name in brain_names]
         bars = ax.bar(brain_names, mems, color=colors)
-        ax.set_ylabel("Mémoire (Mo)")
-        ax.set_title("Empreinte mémoire")
+        ax.set_ylabel("Memory (MB)")
+        ax.set_title("Memory footprint")
         ax.grid(True, alpha=0.2, axis='y')
         for bar, mem in zip(bars, mems):
             height = bar.get_height()
@@ -428,8 +428,8 @@ Métriques: précision, latence, mémoire.
         ax.bar(x + w/2, recall_times, w, label="Recall", color="#feca57")
         ax.set_xticks(x)
         ax.set_xticklabels(brain_names)
-        ax.set_ylabel("Temps (ms)")
-        ax.set_title("Apprentissage vs Rappel (mémoire)")
+        ax.set_ylabel("Time (ms)")
+        ax.set_title("Learn vs Recall (memory task)")
         ax.set_yscale("log")
         ax.legend()
         ax.grid(True, alpha=0.2, axis='y')
@@ -437,11 +437,11 @@ Métriques: précision, latence, mémoire.
         fig_path = "/home/z/my-project/download/benchmark_chart_v2.png"
         fig.savefig(fig_path, dpi=100, bbox_inches="tight", facecolor="white")
         plt.close(fig)
-        print(f"✓ Graphique sauvé dans {fig_path}")
+        print(f"✓ Chart saved to {fig_path}")
     except Exception as e:
-        print(f"⚠ Graphique non généré: {e}")
+        print(f"⚠ Chart not generated: {e}")
 
-    banner("FIN DU BENCHMARK", char="#")
+    banner("END OF BENCHMARK", char="#")
 
 
 if __name__ == "__main__":

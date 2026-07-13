@@ -4,56 +4,56 @@
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_time_ms": 3.635883331298828,
-      "max_time_ms": 6.960391998291016
+      "avg_time_ms": 4.162693023681641,
+      "max_time_ms": 7.172107696533203
     },
     "memory": {
       "correct": 3,
       "total": 5,
       "accuracy": 0.6,
-      "avg_learn_ms": 0.6130218505859375,
-      "avg_recall_ms": 116.38669967651367
+      "avg_learn_ms": 0.6856441497802734,
+      "avg_recall_ms": 127.96940803527832
     },
     "tool_calling": {
       "correct": 3,
       "total": 3,
       "accuracy": 1.0,
-      "avg_time_ms": 14.188925425211588
+      "avg_time_ms": 15.070041020711264
     },
     "robustness": {
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_time_ms": 52.40144729614258
+      "avg_time_ms": 53.984642028808594
     },
-    "memory_mb": 0.45084381103515625
+    "memory_mb": 0.4507598876953125
   },
   "NOVA": {
     "arithmetic": {
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_time_ms": 5.115652084350586,
-      "max_time_ms": 7.359027862548828
+      "avg_time_ms": 5.709028244018555,
+      "max_time_ms": 8.461713790893555
     },
     "memory": {
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_learn_ms": 1.1837482452392578,
-      "avg_recall_ms": 5.579328536987305
+      "avg_learn_ms": 1.0993003845214844,
+      "avg_recall_ms": 5.962038040161133
     },
     "tool_calling": {
       "correct": 3,
       "total": 3,
       "accuracy": 1.0,
-      "avg_time_ms": 11.280218760172525
+      "avg_time_ms": 11.530717213948568
     },
     "robustness": {
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_time_ms": 8.254814147949219
+      "avg_time_ms": 4.340219497680664
     },
     "memory_mb": 57.53156661987305
   },
@@ -62,27 +62,27 @@
       "correct": 3,
       "total": 5,
       "accuracy": 0.6,
-      "avg_time_ms": 317.9293632507324,
-      "max_time_ms": 401.9618034362793
+      "avg_time_ms": 307.83843994140625,
+      "max_time_ms": 340.90614318847656
     },
     "memory": {
       "correct": 3,
       "total": 5,
       "accuracy": 0.6,
-      "avg_learn_ms": 276.2876510620117,
-      "avg_recall_ms": 437.8085136413574
+      "avg_learn_ms": 316.9482231140137,
+      "avg_recall_ms": 458.58635902404785
     },
     "tool_calling": {
       "correct": 0,
       "total": 3,
       "accuracy": 0.0,
-      "avg_time_ms": 484.47593053181964
+      "avg_time_ms": 499.5059172312419
     },
     "robustness": {
       "correct": 1,
       "total": 5,
       "accuracy": 0.2,
-      "avg_time_ms": 561.460018157959
+      "avg_time_ms": 626.4010429382324
     },
     "memory_mb": 0.0
   },
@@ -91,28 +91,28 @@
       "correct": 5,
       "total": 5,
       "accuracy": 1.0,
-      "avg_time_ms": 3.2767772674560547,
-      "max_time_ms": 4.55164909362793
+      "avg_time_ms": 3.2381057739257812,
+      "max_time_ms": 4.457712173461914
     },
     "memory": {
       "correct": 3,
       "total": 5,
       "accuracy": 0.6,
-      "avg_learn_ms": 2.0793914794921875,
-      "avg_recall_ms": 119.37260627746582
+      "avg_learn_ms": 2.210092544555664,
+      "avg_recall_ms": 127.7411937713623
     },
     "tool_calling": {
       "correct": 3,
       "total": 3,
       "accuracy": 1.0,
-      "avg_time_ms": 23.672103881835938
+      "avg_time_ms": 16.77258809407552
     },
     "robustness": {
-      "correct": 3,
+      "correct": 2,
       "total": 5,
-      "accuracy": 0.6,
-      "avg_time_ms": 64.00036811828613
+      "accuracy": 0.4,
+      "avg_time_ms": 59.8475456237793
     },
-    "memory_mb": 57.98123550415039
+    "memory_mb": 57.981327056884766
   }
 }

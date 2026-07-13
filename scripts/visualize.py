@@ -83,14 +83,15 @@ def plot_raster(brain, n_ticks=50, save_path=None):
             for n, s in enumerate(spikes):
                 if s:
                     ax.plot(tick, n, '.', color=color, markersize=1)
-        ax.set_ylabel(f"{name}\n(neurone)")
+        ax.set_ylabel(f"{name}\n(neuron)")
         ax.set_xlim(0, n_ticks)
         ax.set_ylim(0, len(log[0]))
-        ax.set_title(f"Population {name} — {int(sum(s.sum() for s in log))} spikes totaux")
+        ax.set_title(f"Population {name} — {int(sum(s.sum() for s in log))} total spikes")
         ax.grid(True, alpha=0.1)
     axes[-1].set_xlabel("Tick")
     fig.suptitle("SPIKE — Spike raster (input: 'le chat dort')",
                  color='#00d2ff', fontsize=14)
+    # Note: input text stays in French to match the actual demo; axis labels in English
     if save_path:
         save_fig(fig, save_path)
 
@@ -109,10 +110,10 @@ def plot_weights(brain, save_path=None):
         W_dense = W[:n_pre, :n_post].toarray()
         im = ax.imshow(W_dense, aspect='auto', cmap='viridis', interpolation='nearest')
         ax.set_title(f"{name} ({W.nnz} synapses)")
-        ax.set_xlabel("Neurone post")
-        ax.set_ylabel("Neurone pre")
-        plt.colorbar(im, ax=ax, label='Poids')
-    fig.suptitle("SPIKE — Poids synaptiques (CSR sparse)",
+        ax.set_xlabel("Post neuron")
+        ax.set_ylabel("Pre neuron")
+        plt.colorbar(im, ax=ax, label='Weight')
+    fig.suptitle("SPIKE — Synaptic weights (CSR sparse)",
                  color='#00d2ff', fontsize=14)
     if save_path:
         save_fig(fig, save_path)
@@ -144,10 +145,10 @@ def plot_motor_activity(brain, save_path=None):
             ax.set_title(f"Query: '{query}'\n(score={r['score']:.1f})")
             ax.grid(True, alpha=0.1, axis='x')
         else:
-            ax.text(0.5, 0.5, "Pas d'activité", ha='center', va='center',
+            ax.text(0.5, 0.5, "No activity", ha='center', va='center',
                     transform=ax.transAxes)
             ax.set_title(f"Query: '{query}'")
-    fig.suptitle("SPIKE — Activité motrice par token (rappel)",
+    fig.suptitle("SPIKE — Motor activity per token (recall)",
                  color='#00d2ff', fontsize=14)
     if save_path:
         save_fig(fig, save_path)
@@ -181,8 +182,8 @@ def plot_stdp_evolution(brain, save_path=None):
     if history_sm:
         ax.plot(ticks, history_sm, label='sens→motor (direct)', color='#ff6b6b', linewidth=2)
     ax.set_xlabel("Tick")
-    ax.set_ylabel("Poids moyen")
-    ax.set_title("STDP — Évolution des poids pendant la simulation")
+    ax.set_ylabel("Mean weight")
+    ax.set_title("STDP — Weight evolution during simulation")
     ax.legend(loc='upper right')
     ax.grid(True, alpha=0.2)
     if save_path:
@@ -211,10 +212,10 @@ def plot_population_dynamics(brain, save_path=None):
     ax.fill_between(ticks, 0, sensory_counts, alpha=0.6, label='Sensory', color='#00d2ff')
     ax.fill_between(ticks, 0, assoc_counts, alpha=0.6, label='Associative', color='#feca57')
     ax.fill_between(ticks, 0, motor_counts, alpha=0.6, label='Motor', color='#ff6b6b')
-    ax.axvline(x=30, color='#576574', linestyle='--', alpha=0.5, label='Input coupé')
+    ax.axvline(x=30, color='#576574', linestyle='--', alpha=0.5, label='Input off')
     ax.set_xlabel("Tick")
-    ax.set_ylabel("Spikes par tick")
-    ax.set_title("SPIKE — Dynamique des populations (input puis silence)")
+    ax.set_ylabel("Spikes per tick")
+    ax.set_title("SPIKE — Population dynamics (input then silence)")
     ax.legend(loc='upper right')
     ax.grid(True, alpha=0.2)
     if save_path:
@@ -234,13 +235,13 @@ def plot_nova_energy(nova, save_path=None):
     fig, axes = plt.subplots(2, 1, figsize=(10, 6), constrained_layout=True)
     axes[0].plot(energies, color='#00d2ff', linewidth=2)
     axes[0].set_xlabel("Step")
-    axes[0].set_ylabel("Énergie")
-    axes[0].set_title("NOVA — Énergie du résonateur (convergence vers attracteur)")
+    axes[0].set_ylabel("Energy")
+    axes[0].set_title("NOVA — Resonator energy (convergence to attractor)")
     axes[0].grid(True, alpha=0.2)
     axes[1].plot(states_norm, color='#feca57', linewidth=2)
     axes[1].set_xlabel("Step")
-    axes[1].set_ylabel("||état||")
-    axes[1].set_title("Norme de l'état (stabilisation)")
+    axes[1].set_ylabel("||state||")
+    axes[1].set_title("State norm (stabilization)")
     axes[1].grid(True, alpha=0.2)
     if save_path:
         save_fig(fig, save_path)
@@ -285,23 +286,23 @@ def plot_aether_cognitive_loop(save_path=None):
                         marker='o', color='#5f27cd', linewidth=2, markersize=8)
                 ax.set_title(f"Q: {q[:30]}...", fontsize=10)
                 ax.set_xlabel("Cycle")
-                ax.set_ylabel("Similarité\n(consecutive thoughts)")
+                ax.set_ylabel("Similarity\n(consecutive thoughts)")
                 ax.grid(True, alpha=0.2)
                 ax.set_ylim(-1, 1)
             else:
-                # Fallback: simule une convergence
+                # Fallback: simulated convergence
                 sims = [0.1, 0.3, 0.55, 0.78, 0.92, 0.95]
                 ax.plot(range(len(sims)), sims, marker='o',
                         color='#5f27cd', linewidth=2, markersize=8)
                 ax.set_title(f"Q: {q[:30]}...", fontsize=10)
                 ax.set_xlabel("Cycle")
-                ax.set_ylabel("Similarité\n(simulée)")
+                ax.set_ylabel("Similarity\n(simulated)")
                 ax.grid(True, alpha=0.2)
                 ax.set_ylim(0, 1)
         except Exception as e:
             ax.text(0.5, 0.5, f"Error: {e}", ha='center', va='center',
                     transform=ax.transAxes, fontsize=9)
-    fig.suptitle("AETHER — Convergence du cycle cognitif (similarité entre pensées consécutives)",
+    fig.suptitle("AETHER — Cognitive loop convergence (similarity between consecutive thoughts)",
                  color='#00d2ff', fontsize=13)
     if save_path:
         save_fig(fig, save_path)
@@ -312,16 +313,16 @@ def plot_aether_cognitive_loop(save_path=None):
 # ---------------------------------------------------------------- #
 
 def plot_aether_attractor(save_path=None):
-    """Montre la convergence d'un attracteur HD."""
+    """Shows convergence of an HD attractor network."""
     from aether.attractor import DiscreteAttractorNetwork
     try:
         attractor = DiscreteAttractorNetwork(n_units=4096, n_patterns=5)
-        # Crée 5 patterns
+        # Create 5 patterns
         patterns = [HDVector(np.random.choice([-1, 1], size=4096).astype(np.int8))
                     for _ in range(5)]
         for p in patterns:
             attractor.learn(p)
-        # Bruite un pattern et observe la convergence
+        # Add 20% noise to a pattern and observe convergence
         query = patterns[0]
         # Ajoute 20% de bruit
         noisy = query.vec.copy()
@@ -344,12 +345,12 @@ def plot_aether_attractor(save_path=None):
         ax.plot(range(len(similarities)), similarities,
                 marker='o', color='#5f27cd', linewidth=3, markersize=10)
         ax.set_xlabel("Step")
-        ax.set_ylabel("Similarité avec le pattern cible")
-        ax.set_title("AETHER — Convergence de l'attractor network (20% de bruit initial)")
+        ax.set_ylabel("Similarity to target pattern")
+        ax.set_title("AETHER — Attractor network convergence (20% initial noise)")
         ax.grid(True, alpha=0.2)
         ax.set_ylim(-0.2, 1.05)
         ax.axhline(y=0.6, color='#576574', linestyle='--', alpha=0.5,
-                    label='Seuil de reconnaissance (0.6)')
+                    label='Recognition threshold (0.6)')
         ax.legend()
     except Exception as e:
         # Fallback: generate simulated convergence
@@ -358,12 +359,12 @@ def plot_aether_attractor(save_path=None):
         ax.plot(range(len(sims)), sims, marker='o',
                 color='#5f27cd', linewidth=3, markersize=10)
         ax.set_xlabel("Step")
-        ax.set_ylabel("Similarité avec le pattern cible")
-        ax.set_title("AETHER — Convergence de l'attractor network (20% de bruit initial)")
+        ax.set_ylabel("Similarity to target pattern")
+        ax.set_title("AETHER — Attractor network convergence (20% initial noise)")
         ax.grid(True, alpha=0.2)
         ax.set_ylim(0.5, 1.05)
         ax.axhline(y=0.6, color='#576574', linestyle='--', alpha=0.5,
-                    label='Seuil de reconnaissance (0.6)')
+                    label='Recognition threshold (0.6)')
         ax.legend()
     if save_path:
         save_fig(fig, save_path)
@@ -381,12 +382,12 @@ def main():
     print("  Visualisations v2 — SPIKE + NOVA + AETHER")
     print("=" * 60)
 
-    print("\nInitialisation SPIKE...")
+    print("\nInitializing SPIKE...")
     spike = SpikeBrain(SpikeConfig(n_sensory=300, n_associative=800, n_motor=300, sim_ticks=40))
-    print("Initialisation NOVA...")
+    print("Initializing NOVA...")
     nova = Nova(NovaConfig(D=5000, sdm_locations=10000))
 
-    print("\nGénération des plots:")
+    print("\nGenerating plots:")
     plot_raster(spike, n_ticks=50,
                 save_path=os.path.join(output_dir, "01_raster.png"))
     plot_weights(spike,
@@ -404,8 +405,8 @@ def main():
     plot_aether_attractor(
         save_path=os.path.join(output_dir, "08_aether_attractor.png"))
 
-    print(f"\n✓ Tous les plots sont dans {output_dir}/")
-    print("\nFichiers générés:")
+    print(f"\n✓ All plots are in {output_dir}/")
+    print("\nGenerated files:")
     for f in sorted(os.listdir(output_dir)):
         size = os.path.getsize(os.path.join(output_dir, f))
         print(f"  {f} ({size // 1024} Ko)")
