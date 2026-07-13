@@ -554,7 +554,7 @@ The brain starts with a 76-sentence built-in corpus (cats, dogs, Paris, water, E
 
 ```bash
 python web/server.py
-# open http://localhost:8000
+# open http://localhost:4141
 ```
 
 ---
