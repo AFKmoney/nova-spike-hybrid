@@ -27,93 +27,19 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aether import AETHER
+from generative.corpus import get_full_corpus, get_corpus_sentences, get_corpus_stats
 
 
 # ---------------------------------------------------------------------- #
-# Corpus de pré-entraînement (intégré — pas de fichier externe requis)
+# Legacy small corpus (kept for backward compatibility)
 # ---------------------------------------------------------------------- #
 
 DEFAULT_CORPUS = """
 The cat is a small domesticated carnivorous mammal. Cats are known for their
-agility, independence, and hunting skills. A cat sleeps on average 12 to 16
-hours per day. Cats communicate through vocalizations like meowing, purring,
-and hissing.
-
-The dog is a domesticated descendant of the wolf. Dogs are known for their
-loyalty, intelligence, and ability to form strong bonds with humans. A dog
-can learn hundreds of commands. Dogs are used as working animals, companions,
-and in therapy.
-
-Paris is the capital of France. It is located on the Seine river. Paris is
-known for the Eiffel Tower, the Louvre museum, and the Notre-Dame cathedral.
-Paris has a population of about 2 million people in the city proper.
-
-The sun is a star at the center of the solar system. It is a nearly perfect
-ball of hot plasma. The sun provides energy to Earth through sunlight. The
-distance from the sun to Earth is about 150 million kilometers.
-
-Water is a chemical compound with the formula H2O. It covers about 71 percent
-of the Earth surface. Water is essential for all known forms of life. Water
-exists as solid ice, liquid water, and gaseous steam.
-
-Albert Einstein was a German-born theoretical physicist. He developed the
-theory of relativity. Einstein received the Nobel Prize in Physics in 1921.
-His most famous equation is E equals m c squared.
-
-The Earth is the third planet from the sun. It is the only known planet to
-harbor life. Earth has one natural satellite, the Moon. The Earth atmosphere
-is composed mostly of nitrogen and oxygen.
-
-A computer is a machine that processes data according to a set of instructions.
-Modern computers use transistors and integrated circuits. A computer has
-hardware components like the CPU, memory, and storage. Software includes
-operating systems, applications, and games.
-
-Python is a high-level programming language. It was created by Guido van Rossum.
-Python emphasizes code readability and simplicity. Python is widely used in
-data science, machine learning, and web development.
-
-The brain is the organ of intelligence and emotion. It is composed of about
-86 billion neurons. Neurons communicate through electrical and chemical
-signals. The brain processes information through specialized regions.
-
-Mathematics is the study of numbers, shapes, and patterns. It includes
-arithmetic, algebra, geometry, and calculus. Mathematics is fundamental to
-science, engineering, and economics. The Pythagorean theorem states that
-a squared plus b squared equals c squared.
-
-Music is the art of arranging sounds in time. It uses rhythm, melody, and
-harmony. Music can evoke emotions and convey meaning. Instruments include
-the piano, guitar, violin, and drums.
-
-Literature is a collection of written works. It includes novels, poetry,
-essays, and plays. Literature explores human experience through language.
-Famous writers include Shakespeare, Tolstoy, and Hemingway.
-
-Science is the systematic study of the natural world. It uses observation,
-experimentation, and theory. The scientific method involves hypothesis,
-prediction, and testing. Major branches include physics, chemistry, and biology.
-
-History is the study of past events. It helps us understand how societies
-developed over time. History is recorded through documents, artifacts, and
-oral traditions. Learning from history helps avoid repeating mistakes.
-
-The ocean covers most of the Earth surface. It contains salt water and is
-home to diverse marine life. The deepest point is the Mariana Trench.
-Oceans regulate the global climate and provide food for billions of people.
-
-A tree is a perennial plant with an elongated stem. Trees provide oxygen
-through photosynthesis. They absorb carbon dioxide from the atmosphere.
-Forests are vital ecosystems that support biodiversity.
-
-The heart is a muscular organ that pumps blood through the body. It beats
-about 100000 times per day. The heart has four chambers. Blood carries
-oxygen and nutrients to cells.
-
-Dreams are experiences that occur during sleep. They involve images,
-thoughts, and emotions. The purpose of dreams is still debated by scientists.
-Dreams may help consolidate memories and process emotions.
+agility, independence, and hunting skills.
 """
+
+DEFAULT_CORPUS = get_full_corpus()  # Use the large corpus by default
 
 
 @dataclass
@@ -125,6 +51,9 @@ class GenerativeConfig:
     max_tokens: int = 50
     top_k: int = 5
     pretrained: bool = True
+    use_bpe: bool = True             # Active le BPE tokenizer (meilleure couverture sous-mots)
+    bpe_vocab_size: int = 2000       # Taille du vocab BPE
+    max_pretrain_sentences: int = 150  # Nombre max de phrases à pré-entraîner (150 = ~60s)
     verbose: bool = False
 
 
@@ -148,26 +77,56 @@ class GenerativeBrain:
         print("Initializing GenerativeBrain (AETHER core)...")
         t0 = time.time()
         self.aether = AETHER()
+
+        # BPE tokenizer (optionnel)
+        self.bpe = None
+        if self.cfg.use_bpe:
+            print("Training BPE tokenizer on corpus...")
+            try:
+                from aether.bpe import BPETokenizer
+                self.bpe = BPETokenizer(vocab_size=self.cfg.bpe_vocab_size)
+                self.bpe.train(DEFAULT_CORPUS, verbose=False)
+                if self.cfg.verbose:
+                    print(f"  BPE trained: {len(self.bpe.vocab)} tokens")
+            except Exception as e:
+                print(f"  BPE training failed ({e}), falling back to word tokenizer")
+                self.bpe = None
+
         if self.cfg.pretrained:
-            print("Pre-training on default corpus...")
+            stats = get_corpus_stats()
+            print(f"Pre-training on large corpus "
+                  f"({stats['n_sentences']} sentences, {stats['n_words']} words, "
+                  f"{stats['n_domains']} domains)...")
             self._pretrain()
         print(f"Ready in {time.time()-t0:.1f}s "
               f"(vocab={len(self.aether.assoc.vocab)}, "
-              f"episodes={len(self.aether.assoc.episodes)})\n")
+              f"episodes={len(self.aether.assoc.episodes)}, "
+              f"bpe={'on' if self.bpe else 'off'})\n")
 
     # ---------------------------------------------------------------- #
     def _pretrain(self) -> None:
         """Pré-entraîne sur le corpus par défaut."""
-        sentences = re.split(r"[.!?]\s+", DEFAULT_CORPUS)
+        sentences = get_corpus_sentences()
+        max_pretrain = self.cfg.max_pretrain_sentences
+        selected = sentences[:max_pretrain]
+        if self.cfg.verbose:
+            print(f"  Pre-training on {len(selected)}/{len(sentences)} sentences")
         n = 0
-        for sent in sentences:
+        for sent in selected:
             sent = sent.strip()
             if len(sent) < 5:
                 continue
             self.aether.teach(sent, silent=True)
+            try:
+                self.aether.ngram_predictor.train_text(sent)
+            except Exception:
+                pass
             n += 1
         if self.cfg.verbose:
             print(f"  Learned {n} sentences from corpus")
+            print(f"  N-gram predictor: {self.aether.ngram_predictor.total_unigrams} unigrams, "
+                  f"{len(self.aether.ngram_predictor.bigram_counts)} bigrams, "
+                  f"{len(self.aether.ngram_predictor.trigram_counts)} trigrams")
 
     def train_on_text(self, text: str) -> dict:
         """Entraîne sur un texte personnalisé (one-shot)."""
